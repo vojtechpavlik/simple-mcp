@@ -143,7 +143,11 @@ spec:
     - name: DescribeKubernetesPod
       description: "Get detailed information about a specific pod, including events. This is the primary tool for debugging a 'Pending' or 'CrashLoopBackOff' pod."
       command: "KUBECONFIG=/etc/rancher/rke2/rke2.yaml /var/lib/rancher/rke2/data/*/bin/kubectl describe pod {{.podName}} -n {{.namespace}}"
-      parameters: ["podName", "namespace"]
+      parameters:
+        - name: podName
+          type: word
+        - name: namespace
+          type: word
 
     - name: GetCRIImages
       description: "Lists all container images currently available on the node's disk."
@@ -152,7 +156,10 @@ spec:
     - name: GetServiceLogs
       description: "Retrieves the last 10 log lines for any specific systemd service."
       command: "journalctl -u {{.serviceName}} -n 10 --no-pager"
-      parameters: ["serviceName"]
+      parameters:
+        - name: serviceName
+          type: word
+          validator: "^[a-z0-9.-]+$"
 
     - name: GetKernelLog
       description: "Retrieves the last 10 lines from the kernel message buffer (dmesg). Useful for hardware or driver issues."
@@ -169,7 +176,9 @@ spec:
     - name: GetServiceStatus
       description: "Check the status of any specific systemd service (e.g., active, inactive, failed)."
       command: "systemctl is-active {{.serviceName}} || true"
-      parameters: ["serviceName"]
+      parameters:
+        - name: serviceName
+          type: word
 
     - name: ListFailedServices
       description: "Lists all systemd services that have entered a 'failed' state."
@@ -183,7 +192,9 @@ spec:
     - name: PackageVersion
       description: "Gets the installed version of a specific RPM package."
       command: "rpm -q {{.package}}"
-      parameters: ["package"]
+      parameters:
+        - name: package
+          type: word
 
     - name: ListSystemImages
       description: "Lists available tags for a given repository in registry.suse.de. Example repository: devel/unifiedcore/releases/0.6/containers/uc-base-os-kernel-rt or devel/unifiedcore/releases/0.6/containers/uc-base-os-kernel-default"

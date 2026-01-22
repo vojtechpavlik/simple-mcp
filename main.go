@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -362,11 +363,11 @@ func registerConfigTools(mcpServer *server.MCPServer, cfg *Config, taskStore *Ta
 		var toolOptions []mcp.ToolOption
 		toolOptions = append(toolOptions, mcp.WithDescription(item.Description))
 
-		for _, paramName := range item.Parameters {
+		for _, param := range item.Parameters {
 			toolOptions = append(toolOptions, mcp.WithString(
-				paramName,
+				param.Name,
 				mcp.Required(),
-				mcp.Description(fmt.Sprintf("Parameter: %s", paramName)),
+				mcp.Description(fmt.Sprintf("Parameter: %s", param.Name)),
 			))
 		}
 
@@ -376,12 +377,15 @@ func registerConfigTools(mcpServer *server.MCPServer, cfg *Config, taskStore *Ta
 			log.Printf("Handling request for tool: %s", currentItem.Name)
 
 			params := make(map[string]interface{})
-			for _, paramName := range currentItem.Parameters {
-				val, err := request.RequireString(paramName)
+			for _, param := range currentItem.Parameters {
+				val, err := request.RequireString(param.Name)
 				if err != nil {
 					return mcp.NewToolResultError(err.Error()), nil
 				}
-				params[paramName] = val
+				if err := validateParameter(param, val, tmpDir); err != nil {
+					return mcp.NewToolResultError(err.Error()), nil
+				}
+				params[param.Name] = val
 			}
 
 			if verbose {
@@ -405,6 +409,123 @@ func registerConfigTools(mcpServer *server.MCPServer, cfg *Config, taskStore *Ta
 		}
 		log.Println(logMessage)
 	}
+}
+
+// validateParameter checks if a parameter value satisfies the specified type
+// and validation regular expression.
+func validateParameter(p Parameter, value string, tmpDir string) error {
+	// 1. Check regexp if specified
+	if p.Validator != "" {
+		re, err := regexp.Compile(p.Validator)
+		if err != nil {
+			return fmt.Errorf("invalid validator regexp for parameter '%s': %v", p.Name, err)
+		}
+		if !re.MatchString(value) {
+			return fmt.Errorf("parameter '%s' failed regexp check", p.Name)
+		}
+	}
+
+	// 2. Check type
+	switch p.Type {
+	case "":
+		// No type specified, skip
+	case "path":
+		if err := checkShellSafe(value); err != nil {
+			return fmt.Errorf("parameter '%s' is not a valid path: %v", p.Name, err)
+		}
+	case "filename":
+		if strings.ContainsAny(value, "/\\") {
+			return fmt.Errorf("parameter '%s' must not contain path separators", p.Name)
+		}
+		if err := checkShellSafe(value); err != nil {
+			return fmt.Errorf("parameter '%s' is not a valid filename: %v", p.Name, err)
+		}
+	case "number":
+		if _, err := strconv.ParseFloat(value, 64); err != nil {
+			return fmt.Errorf("parameter '%s' must be a valid number", p.Name)
+		}
+	case "integer":
+		if _, err := strconv.Atoi(value); err != nil {
+			return fmt.Errorf("parameter '%s' must be a valid integer", p.Name)
+		}
+	case "word":
+		if matched, _ := regexp.MatchString("^[a-zA-Z0-9]+$", value); !matched {
+			return fmt.Errorf("parameter '%s' must be an alphanumeric word without spaces", p.Name)
+		}
+	case "directory":
+		info, err := os.Stat(value)
+		if err != nil {
+			return fmt.Errorf("parameter '%s': path does not exist or is not accessible: %v", p.Name, value)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("parameter '%s': path is not a directory: %v", p.Name, value)
+		}
+	case "file":
+		info, err := os.Stat(value)
+		if err != nil {
+			return fmt.Errorf("parameter '%s': path does not exist or is not accessible: %v", p.Name, value)
+		}
+		if info.IsDir() {
+			return fmt.Errorf("parameter '%s': path is a directory, expected a file: %v", p.Name, value)
+		}
+	case "tmpDir":
+		if tmpDir == "" {
+			return fmt.Errorf("parameter '%s' uses 'tmpDir' type but scratch space is not enabled", p.Name)
+		}
+		fullPath, err := resolvePath(tmpDir, value)
+		if err != nil {
+			return fmt.Errorf("parameter '%s': invalid scratch space path: %v", p.Name, err)
+		}
+		info, err := os.Stat(fullPath)
+		if err != nil {
+			return fmt.Errorf("parameter '%s': path does not exist in scratch space: %v", p.Name, value)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("parameter '%s': path is not a directory in scratch space: %v", p.Name, value)
+		}
+	case "tmpFile":
+		if tmpDir == "" {
+			return fmt.Errorf("parameter '%s' uses 'tmpFile' type but scratch space is not enabled", p.Name)
+		}
+		fullPath, err := resolvePath(tmpDir, value)
+		if err != nil {
+			return fmt.Errorf("parameter '%s': invalid scratch space path: %v", p.Name, err)
+		}
+		info, err := os.Stat(fullPath)
+		if err != nil {
+			return fmt.Errorf("parameter '%s': path does not exist in scratch space: %v", p.Name, value)
+		}
+		if info.IsDir() {
+			return fmt.Errorf("parameter '%s': path is a directory in scratch space, expected a file: %v", p.Name, value)
+		}
+	default:
+		return fmt.Errorf("unknown parameter type '%s' for parameter '%s'", p.Type, p.Name)
+	}
+
+	return nil
+}
+
+// checkShellSafe verifies that a string does not contain unescaped spaces or
+// shell control characters.
+func checkShellSafe(s string) error {
+	dangerous := ";&|<>$( )`\"'*?[]!{}"
+	escaped := false
+	for _, r := range s {
+		if r == '\\' {
+			escaped = !escaped
+			continue
+		}
+		if strings.ContainsRune(dangerous, r) {
+			if !escaped {
+				return fmt.Errorf("contains unescaped shell character '%c'", r)
+			}
+		}
+		escaped = false
+	}
+	if escaped {
+		return fmt.Errorf("trailing backslash")
+	}
+	return nil
 }
 
 func handleSyncTask(ctx context.Context, currentItem ContextItem, params map[string]interface{}, tmpDir string, verbose bool) (*mcp.CallToolResult, error) {

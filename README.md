@@ -65,6 +65,34 @@ The `spec` section also defines:
     monitoring.
   * `timeoutSeconds`: Maximum execution time for the command (default: 30s).
 
+### **Parameter Validation**
+
+Tool parameters can be validated before execution by specifying their `type`
+and/or a `validator` regular expression:
+
+*   **`type`**:
+    *   `path`: A valid shell path (no unescaped spaces or control characters).
+    *   `directory`: An existing directory on the host.
+    *   `file`: An existing file on the host.
+    *   `number`: A valid number.
+    *   `integer`: A valid integer.
+    *   `word`: An alphanumeric string without spaces.
+    *   `filename`: A valid filename without path separators.
+    *   `tmpDir`: An existing directory within the scratch space.
+    *   `tmpFile`: An existing file within the scratch space.
+*   **`validator`**: A regular expression that the parameter value must match.
+
+Example:
+```yaml
+  tools:
+    - name: GetServiceLogs
+      command: "journalctl -u {{.serviceName}} -n 10"
+      parameters:
+        - name: serviceName
+          type: word
+          validator: "^[a-z0-9.-]+$"
+```
+
 ## **Built-in Capabilities**
 
 * **Resource Search:** The server provides a built-in `SearchResources` tool
