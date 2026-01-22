@@ -79,6 +79,41 @@ Data endpoints the LLM can read (e.g., file contents or command output).
 .P
 Example configuration location: \fI/etc/simple-mcp/simple-mcp.yaml\fR
 
+.SH PARAMETER VALIDATION
+Tool parameters can be validated before execution by specifying their \fBtype\fR and/or a \fBvalidator\fR regular expression in the YAML configuration. Both the type and the validator must be satisfied for the tool to proceed.
+
+.SS Supported Types
+.TP
+.B path
+A valid shell path. It cannot contain unescaped spaces or shell control characters (e.g., ;, &, |, <, >, $, (, ), `, \, ", ', *, ?, [, ], !, {, }).
+.TP
+.B directory
+A path pointing to an existing directory on the host system.
+.TP
+.B file
+A path pointing to an existing file on the host system.
+.TP
+.B number
+A valid number (integer or floating point), validated using \fBstrconv.ParseFloat\fR.
+.TP
+.B integer
+A valid integer, validated using \fBstrconv.Atoi\fR.
+.TP
+.B word
+An alphanumeric string without spaces.
+.TP
+.B filename
+A valid filename without path separators.
+.TP
+.B tmpDir
+A path pointing to an existing directory within the scratch space.
+.TP
+.B tmpFile
+A path pointing to an existing file within the scratch space.
+
+.SS Custom Validation
+The \fBvalidator\fR field allows specifying a regular expression that the parameter value must satisfy. Both type and validator must pass if both are defined.
+
 .SH SCRATCH SPACE
 When a scratch directory is provided via \fB\-tmpdir\fR or \fBtmpDir\fR,
 \fBsimple-mcp\fR automatically registers a set of tools that allow the LLM to

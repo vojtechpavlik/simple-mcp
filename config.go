@@ -23,15 +23,52 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Parameter defines a single parameter for a tool, including its name, type,
+// and an optional validation regular expression.
+type Parameter struct {
+	Name      string `yaml:"name"`
+	Type      string `yaml:"type,omitempty"`
+	Validator string `yaml:"validator,omitempty"`
+}
+
+// ParameterList is a custom type for tool parameters that supports both a simple
+// list of strings (for backward compatibility) and a list of Parameter objects.
+type ParameterList []Parameter
+
+// UnmarshalYAML implements custom unmarshaling for ParameterList.
+func (pl *ParameterList) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind != yaml.SequenceNode {
+		return fmt.Errorf("parameters must be a sequence")
+	}
+
+	var parameters []Parameter
+	for _, node := range value.Content {
+		switch node.Kind {
+		case yaml.ScalarNode:
+			parameters = append(parameters, Parameter{Name: node.Value})
+		case yaml.MappingNode:
+			var p Parameter
+			if err := node.Decode(&p); err != nil {
+				return err
+			}
+			parameters = append(parameters, p)
+		default:
+			return fmt.Errorf("parameter must be a string (name) or an object")
+		}
+	}
+	*pl = parameters
+	return nil
+}
+
 // ContextItem defines a single dynamic context source (Tool) exposed to the LLM.
 // Tools are executable commands that can accept parameters.
 type ContextItem struct {
-	Name           string   `yaml:"name"`
-	Description    string   `yaml:"description"`
-	Command        string   `yaml:"command"`
-	TimeoutSeconds int      `yaml:"timeoutSeconds,omitempty"`
-	Parameters     []string `yaml:"parameters,omitempty"`
-	Async          bool     `yaml:"async,omitempty"`
+	Name           string        `yaml:"name"`
+	Description    string        `yaml:"description"`
+	Command        string        `yaml:"command"`
+	TimeoutSeconds int           `yaml:"timeoutSeconds,omitempty"`
+	Parameters     ParameterList `yaml:"parameters,omitempty"`
+	Async          bool          `yaml:"async,omitempty"`
 }
 
 // ResourceItem defines a system resource exposed via the MCP Resources capability.

@@ -495,3 +495,54 @@ spec:
 		t.Error("relative directory resource not found")
 	}
 }
+
+func TestLoadConfig_StructuredParameters(t *testing.T) {
+	content := `
+apiVersion: v1
+kind: DynamicContextSource
+metadata:
+  name: test-mcp
+spec:
+  tools:
+    - name: TestTool
+      command: echo test
+      parameters:
+        - name: arg1
+          type: integer
+          validator: "^[0-9]+$"
+        - arg2
+`
+	tmpfile, err := os.CreateTemp("", "config-struct-params-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	if _, err := tmpfile.Write([]byte(content)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadConfig(tmpfile.Name())
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+
+	if len(cfg.Specification.Tools) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(cfg.Specification.Tools))
+	}
+	params := cfg.Specification.Tools[0].Parameters
+	if len(params) != 2 {
+		t.Fatalf("expected 2 parameters, got %d", len(params))
+	}
+
+	if params[0].Name != "arg1" || params[0].Type != "integer" || params[0].Validator != "^[0-9]+$" {
+		t.Errorf("parameter 0 mismatch: %+v", params[0])
+	}
+
+	if params[1].Name != "arg2" || params[1].Type != "" || params[1].Validator != "" {
+		t.Errorf("parameter 1 mismatch: %+v", params[1])
+	}
+}
