@@ -64,7 +64,7 @@ spec:
 
     - name: GetServiceLogs
       description: "Retrieves the last 10 log lines for any specific systemd service."
-      command: "journalctl -u {{.serviceName}} -n 10 --no-pager"
+      command: 'journalctl -u "{{.serviceName}}" -n 10 --no-pager'
       parameters:
         - name: serviceName
           type: word
@@ -84,7 +84,7 @@ spec:
 
     - name: GetServiceStatus
       description: "Check the status of any specific systemd service (e.g., active, inactive, failed)."
-      command: "systemctl is-active {{.serviceName}} || true"
+      command: 'systemctl is-active "{{.serviceName}}" || true'
       parameters:
         - name: serviceName
           type: word
@@ -96,7 +96,7 @@ spec:
 
     - name: PackageVersion
       description: "Gets the installed version of a specific RPM package."
-      command: "rpm -q {{.package}}"
+      command: 'rpm -q "{{.package}}"'
       parameters:
         - name: package
           type: word
