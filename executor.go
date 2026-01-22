@@ -71,18 +71,13 @@ func executeCommand(item ContextItem, params map[string]interface{}, workDir str
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "sh", "-c", finalCommand)
+	// We use exec.Command (without Context) so we can manually manage the
+	// wait/kill cycle. This prevents 'CombinedOutput' from hanging on
+	// open pipes even after the context is done.
+	cmd := exec.Command("sh", "-c", finalCommand)
 
-	// 1. Assign the process to a new Process Group so we can identify all children.
+	// Assign the process to a new Process Group so we can identify all children.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-
-	// 2. Custom cancel function to kill the whole process group (-pid).
-	// This ensures that if 'sh' spawns 'sleep', 'sleep' also gets killed,
-	// allowing the output pipes to close immediately.
-	cmd.Cancel = func() error {
-		// Signal the process group by using negative PID
-		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-	}
 
 	// Attach the current environment + our safe parameter variables
 	cmd.Env = append(os.Environ(), envVars...)
@@ -94,28 +89,50 @@ func executeCommand(item ContextItem, params map[string]interface{}, workDir str
 		cmd.Dir = "/tmp"
 	}
 
-	output, err := cmd.CombinedOutput()
+	// Capture both stdout and stderr in the same buffer (mimics CombinedOutput)
+	var outputBuf bytes.Buffer
+	cmd.Stdout = &outputBuf
+	cmd.Stderr = &outputBuf
 
-	// Default exit code to 0 on success, -1 for Go-level errors (e.g., timeout).
-	exitCode := 0
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		} else {
-			exitCode = -1 // Indicates a non-execution error (e.g., context deadline).
+	// Start the command
+	if err := cmd.Start(); err != nil {
+		return "", -1, 0, fmt.Errorf("failed to start command: %w", err)
+	}
+
+	// Create a channel to signal command completion
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	// Wait for either the command to finish or the timeout
+	select {
+	case <-ctx.Done():
+		// Timeout occurred!
+		// Kill the entire process group to ensure children (like 'sleep') are killed.
+		// We ignore errors here because the process might already be gone.
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+
+		return "", -1, time.Since(startTime), fmt.Errorf("command timed out after %d seconds", timeout)
+
+	case err := <-done:
+		// Command finished naturally
+		exitCode := 0
+		if err != nil {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				exitCode = exitErr.ExitCode()
+			} else {
+				exitCode = -1 // Non-execution error
+			}
 		}
+
+		duration := time.Since(startTime)
+
+		if err != nil {
+			// Return the output (likely stderr) along with the error to aid debugging.
+			return outputBuf.String(), exitCode, duration, fmt.Errorf("command failed: %w", err)
+		}
+
+		return outputBuf.String(), exitCode, duration, nil
 	}
-
-	duration := time.Since(startTime)
-
-	if ctx.Err() == context.DeadlineExceeded {
-		return "", -1, duration, fmt.Errorf("command timed out after %d seconds", timeout)
-	}
-
-	if err != nil {
-		// Return the output (likely stderr) along with the error to aid debugging.
-		return string(output), exitCode, duration, fmt.Errorf("command failed: %w", err)
-	}
-
-	return string(output), exitCode, duration, nil
 }
