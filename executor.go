@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 	"text/template"
 	"time"
 )
@@ -71,6 +72,17 @@ func executeCommand(item ContextItem, params map[string]interface{}, workDir str
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "sh", "-c", finalCommand)
+
+	// 1. Assign the process to a new Process Group so we can identify all children.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	// 2. Custom cancel function to kill the whole process group (-pid).
+	// This ensures that if 'sh' spawns 'sleep', 'sleep' also gets killed,
+	// allowing the output pipes to close immediately.
+	cmd.Cancel = func() error {
+		// Signal the process group by using negative PID
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
 
 	// Attach the current environment + our safe parameter variables
 	cmd.Env = append(os.Environ(), envVars...)
