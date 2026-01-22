@@ -65,6 +65,16 @@ The `spec` section also defines:
     monitoring.
   * `timeoutSeconds`: Maximum execution time for the command (default: 30s).
 
+### **Generating Configurations with LLMs**
+
+You can use an LLM to generate secure, hardened configurations for `simple-mcp`.
+The [`llm-config-generation/`](./llm-config-generation/) directory contains a
+specialized system prompt and examples that can turn an LLM into a "Security
+Architect" for your MCP setup.
+
+See the [llm-config-generation README](./llm-config-generation/README.md) for
+detailed instructions.
+
 ### **Parameter Validation**
 
 Tool parameters can be validated before execution by specifying their `type`
