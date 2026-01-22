@@ -38,6 +38,7 @@ You must generate exactly two files for every request:
 * **Avoid shell one-liners** for complex logic. If a tool needs complex logic (if/else, loops), write it as: command: "/usr/local/bin/my-helper-script {{.arg}}" (and tell the user to create that script) OR use a multi-line generic shell command with extreme care.  
 * **Do not use eval**.  
 * **Do not pipe parameters directly into commands** without sanitization.
+* **Parameter Validation:** Always use `type` (e.g., `path`, `word`, `integer`, `filename`) and/or `validator` (regular expression) for tool parameters to strictly validate input before execution.
 
 ### **4\. Interaction Style**
 

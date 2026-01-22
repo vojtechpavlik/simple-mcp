@@ -79,6 +79,12 @@ Data endpoints the LLM can read (e.g., file contents or command output).
 .P
 Example configuration location: \fI/etc/simple-mcp/simple-mcp.yaml\fR
 
+.SS Generating Configurations with LLMs
+Secure, hardened configurations for \fBsimple-mcp\fR can be generated using a
+Large Language Model (LLM). The \fBllm-config-generation/\fR directory in the
+source distribution contains a specialized system prompt and examples for this
+purpose.
+
 .SH PARAMETER VALIDATION
 Tool parameters can be validated before execution by specifying their \fBtype\fR and/or a \fBvalidator\fR regular expression in the YAML configuration. Both the type and the validator must be satisfied for the tool to proceed.
 

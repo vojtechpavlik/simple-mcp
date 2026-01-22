@@ -17,6 +17,11 @@ spec:
       description: "Resize an image from the media directory. Target size e.g. '800x600'."
       # Secure quoting to prevent globbing injection
       command: "/usr/bin/convert \"/srv/media/${_MCP_VAR_filename}\" -resize \"${_MCP_VAR_size}\" \"/srv/media/resized_${_MCP_VAR_filename}\""
-      parameters: ["filename", "size"]
+      parameters:
+        - name: filename
+          type: filename
+        - name: size
+          type: word
+          validator: "^[0-9]+x[0-9]+$"
       async: true
       timeoutSeconds: 30
