@@ -23,5 +23,5 @@ lint-docs:
 	@echo "Linting manpages..."
 	@mandoc -Tlint simple-mcp.1
 	@mandoc -Tlint simple-mcp-cli.1
-	@echo "Linting README..."
-	@markdownlint-cli2 README.md
+	@echo "Linting README and other documentation..."
+	@markdownlint-cli2 README.md llm-config-generation/README.md llm-config-generation/system_prompt_mcp_architect.md

@@ -38,7 +38,7 @@ func TestMarkdown(t *testing.T) {
 		}
 	}
 
-	cmd := exec.Command("markdownlint-cli2", "README.md")
+	cmd := exec.Command("markdownlint-cli2", "README.md", "llm-config-generation/README.md", "llm-config-generation/system_prompt_mcp_architect.md")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Errorf("markdownlint failed: %v\nOutput: %s", err, string(output))
