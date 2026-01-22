@@ -80,19 +80,20 @@ detailed instructions.
 Tool parameters can be validated before execution by specifying their `type`
 and/or a `validator` regular expression:
 
-*   **`type`**:
-    *   `path`: A valid shell path (no unescaped spaces or control characters).
-    *   `directory`: An existing directory on the host.
-    *   `file`: An existing file on the host.
-    *   `number`: A valid number.
-    *   `integer`: A valid integer.
-    *   `word`: An alphanumeric string without spaces.
-    *   `filename`: A valid filename without path separators.
-    *   `tmpDir`: An existing directory within the scratch space.
-    *   `tmpFile`: An existing file within the scratch space.
-*   **`validator`**: A regular expression that the parameter value must match.
+* **`type`**:
+  * `path`: A valid shell path (no unescaped spaces or control characters).
+  * `directory`: An existing directory on the host.
+  * `file`: An existing file on the host.
+  * `number`: A valid number.
+  * `integer`: A valid integer.
+  * `word`: An alphanumeric string without spaces.
+  * `filename`: A valid filename without path separators.
+  * `tmpDir`: An existing directory within the scratch space.
+  * `tmpFile`: An existing file within the scratch space.
+* **`validator`**: A regular expression that the parameter value must match.
 
 Example:
+
 ```yaml
   tools:
     - name: GetServiceLogs
@@ -147,11 +148,11 @@ By default, simple-mcp binds to localhost:8080, allowing only local connections.
 
 The Model Context Protocol (MCP) does not implement authentication itself. If you
 need to use simple-mcp outside of the machine it is running on, it is
-highly recommended to use a **standard reverse proxy** (like Nginx, Apache, Caddy, or
-Traefik) to handle:
+highly recommended to use a **standard reverse proxy** (like Nginx, Apache,
+Caddy, or Traefik) to handle:
 
-*   **TLS/SSL Encryption:** To protect data in transit.
-*   **Authentication:** To restrict access to authorized users (e.g., Basic
+* **TLS/SSL Encryption:** To protect data in transit.
+* **Authentication:** To restrict access to authorized users (e.g., Basic
     Auth, OAuth2, OIDC).
 
 ### **Example: Nginx with Basic Auth**
@@ -159,10 +160,10 @@ Traefik) to handle:
 Comprehensive examples for various reverse proxies can be found in the
 [`webauth-examples/`](./webauth-examples/) directory:
 
-*   **Nginx:** [Basic Auth](./webauth-examples/nginx-basic-auth.conf), [OAuth2/OIDC](./webauth-examples/nginx-oauth2-proxy.conf)
-*   **Apache:** [Basic Auth](./webauth-examples/apache-basic-auth.conf), [OpenID Connect](./webauth-examples/apache-oidc.conf)
-*   **Caddy:** [Basic Auth & Forward Auth](./webauth-examples/Caddyfile)
-*   **Traefik:** [Docker Labels for Basic/Forward Auth](./webauth-examples/traefik-docker-compose.yaml)
+* **Nginx:** [Basic Auth](./webauth-examples/nginx-basic-auth.conf), [OAuth2/OIDC](./webauth-examples/nginx-oauth2-proxy.conf)
+* **Apache:** [Basic Auth](./webauth-examples/apache-basic-auth.conf), [OpenID Connect](./webauth-examples/apache-oidc.conf)
+* **Caddy:** [Basic Auth & Forward Auth](./webauth-examples/Caddyfile)
+* **Traefik:** [Docker Labels for Basic/Forward Auth](./webauth-examples/traefik-docker-compose.yaml)
 
 ### **Parameters and Shell Injection**
 
@@ -172,19 +173,19 @@ as a parameter will not execute the second command).
 
 However, users must still be careful when designing tool commands:
 
-*   **Argument Splitting & Globbing:** By default, if you use `{{.param}}`
+* **Argument Splitting & Globbing:** By default, if you use `{{.param}}`
     without quotes, the shell will expand the variable and then perform word
     splitting and globbing. For example, if `param` is `hello world`, `echo {{.param}}`
     becomes `echo hello world` (two arguments). If `param` is `*`, it might
     expand to a list of files.
-*   **Use Double Quotes:** It is highly recommended to use double quotes around
+* **Use Double Quotes:** It is highly recommended to use double quotes around
     parameters: `"{{.param}}"`. This ensures the shell treats the parameter
     as a single string and prevents globbing.
-*   **Input Validation:** While direct execution is prevented, parameters are
+* **Input Validation:** While direct execution is prevented, parameters are
     still passed to underlying programs. Ensure these programs handle untrusted
     input safely and don't have vulnerabilities that could be triggered by
     maliciously crafted arguments (e.g., "Bobby Tables" scenarios).
-*   **Avoid `eval`:** Do not use `eval` or similar constructs with parameters
+* **Avoid `eval`:** Do not use `eval` or similar constructs with parameters
     in your commands, as this would re-introduce shell injection risks.
 
 ## **Usage with mcphost**
