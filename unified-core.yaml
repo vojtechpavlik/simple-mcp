@@ -142,7 +142,7 @@ spec:
 
     - name: DescribeKubernetesPod
       description: "Get detailed information about a specific pod, including events. This is the primary tool for debugging a 'Pending' or 'CrashLoopBackOff' pod."
-      command: "KUBECONFIG=/etc/rancher/rke2/rke2.yaml /var/lib/rancher/rke2/data/*/bin/kubectl describe pod {{.podName}} -n {{.namespace}}"
+      command: 'KUBECONFIG=/etc/rancher/rke2/rke2.yaml /var/lib/rancher/rke2/data/*/bin/kubectl describe pod "{{.podName}}" -n "{{.namespace}}"'
       parameters:
         - name: podName
           type: word
@@ -155,7 +155,7 @@ spec:
 
     - name: GetServiceLogs
       description: "Retrieves the last 10 log lines for any specific systemd service."
-      command: "journalctl -u {{.serviceName}} -n 10 --no-pager"
+      command: 'journalctl -u "{{.serviceName}}" -n 10 --no-pager'
       parameters:
         - name: serviceName
           type: word
@@ -175,7 +175,7 @@ spec:
 
     - name: GetServiceStatus
       description: "Check the status of any specific systemd service (e.g., active, inactive, failed)."
-      command: "systemctl is-active {{.serviceName}} || true"
+      command: 'systemctl is-active "{{.serviceName}}" || true'
       parameters:
         - name: serviceName
           type: word
@@ -191,20 +191,24 @@ spec:
 
     - name: PackageVersion
       description: "Gets the installed version of a specific RPM package."
-      command: "rpm -q {{.package}}"
+      command: 'rpm -q "{{.package}}"'
       parameters:
         - name: package
           type: word
 
     - name: ListSystemImages
       description: "Lists available tags for a given repository in registry.suse.de. Example repository: devel/unifiedcore/releases/0.6/containers/uc-base-os-kernel-rt or devel/unifiedcore/releases/0.6/containers/uc-base-os-kernel-default"
-      command: "curl -s https://registry.suse.de/v2/{{.repository}}/tags/list"
-      parameters: ["repository"]
+      command: 'curl -s "https://registry.suse.de/v2/{{.repository}}/tags/list"'
+      parameters:
+        - name: repository
+          type: path
 
     - name: Elemental3CtlSystemUpgrade
       description: "Triggers a system upgrade to the specified OCI image. You should usually list available tags first."
-      command: "elemental3ctl upgrade --os-image {{.osImage}} | grep -v 'deployment file not found' || echo 'System upgrade initiated.'"
-      parameters: ["osImage"]
+      command: 'elemental3ctl upgrade --os-image "{{.osImage}}" | grep -v "deployment file not found" || echo "System upgrade initiated."'
+      parameters:
+        - name: osImage
+          type: path
       timeoutSeconds: 600
       async: true
 
@@ -216,14 +220,24 @@ spec:
       description: "Customizes an OS image. Requires a valid config directory. Check the elemental://guide resource before using. This is a long-running process, so it's better to continue chatting with the user and check the progress on each interaction."
       # We include --local to support local container storage if needed, though remote OCI is default.
       # The command outputs to stdout/stderr, which the async handler captures.
-      command: "elemental3 customize  --config-dir {{.configDir}} --output {{.outputFile}} --image-type {{.imageType}}"
-      parameters: ["configDir", "outputFile", "imageType"]
+      command: 'elemental3 customize --config-dir "{{.configDir}}" --output "{{.outputFile}}" --image-type "{{.imageType}}"'
+      parameters:
+        - name: configDir
+          type: tmpDir
+        - name: outputFile
+          type: path
+        - name: imageType
+          type: word
       timeoutSeconds: 1800 # 30 minutes allow time for pulling images and building
       async: true
 
     - name: Elemental3BuildInstaller
       description: "Builds an installation media (ISO or RAW) from an OS image and config."
-      command: "elemental3ctl build-iso  --os-image {{.osImage}} --output {{.outputDir}}"
-      parameters: ["mediaType", "osImage", "outputDir"]
+      command: 'elemental3ctl build-iso --os-image "{{.osImage}}" --output "{{.outputDir}}"'
+      parameters:
+        - name: osImage
+          type: path
+        - name: outputDir
+          type: path
       timeoutSeconds: 1800
       async: true
