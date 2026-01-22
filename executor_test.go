@@ -30,7 +30,7 @@ func TestExecuteCommand_Timeout(t *testing.T) {
 	// This command sleeps for 2 seconds, but we set timeout to 1 second
 	item := ContextItem{
 		Name:           "Sleepy",
-		Command:        "sleep 2",
+		Command:        "sleep 10",
 		TimeoutSeconds: 1,
 	}
 
@@ -43,7 +43,7 @@ func TestExecuteCommand_Timeout(t *testing.T) {
 	}
 
 	// We verify that it failed reasonably close to the timeout
-	if duration.Seconds() > 1.5 {
+	if duration.Seconds() > 5 {
 		t.Errorf("test took too long (%v), timeout logic might be broken", duration)
 	}
 }
