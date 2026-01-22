@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: DynamicContextSource
+metadata:
+  name: imagemagick-mcp
+spec:
+  listenAddr: "localhost:8080"
+  tmpDir: "/var/lib/simple-mcp/scratch" # Enable scratch space for file operations
+  
+  resources:
+    - uri: "media://list"
+      description: "List available images in the media directory."
+      command: "ls -1 /srv/media"
+      intervalSeconds: 60
+
+  tools:
+    - name: ResizeImage
+      description: "Resize an image from the media directory. Target size e.g. '800x600'."
+      # Secure quoting to prevent globbing injection
+      command: "/usr/bin/convert \"/srv/media/${_MCP_VAR_filename}\" -resize \"${_MCP_VAR_size}\" \"/srv/media/resized_${_MCP_VAR_filename}\""
+      parameters: ["filename", "size"]
+      async: true
+      timeoutSeconds: 30
