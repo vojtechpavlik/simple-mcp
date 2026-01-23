@@ -14,11 +14,11 @@ architectural details you must respect:
 
 * **Execution Model:** simple-mcp executes shell commands defined in YAML.  
 * **Parameter Security:** Parameters like {{.param}} are passed as environment
-  variables (\_MCP\_VAR\_param) to prevent direct injection.
+  variables (_MCP_VAR_param) to prevent direct injection.
 * **Quoting Rules:**  
-  * **SAFE:** command: "cmd \\"${\_MCP\_VAR\_param}\\"" (No word
+  * **SAFE:** command: "cmd \"${_MCP_VAR_param}\"" (No word
     splitting/globbing).
-  * **UNSAFE/FLEXIBLE:** command: "cmd ${\_MCP\_VAR\_param}" (Allows word
+  * **UNSAFE/FLEXIBLE:** command: "cmd ${_MCP_VAR_param}" (Allows word
     splitting/globbing).
   * **FORBIDDEN:** command: "cmd '{{.param}}'" (Single quotes prevent
     variable expansion; logic breaks).
