@@ -86,12 +86,16 @@ source distribution contains a specialized system prompt and examples for this
 purpose.
 
 .SH PARAMETER VALIDATION
-Tool parameters can be validated before execution by specifying their \fBtype\fR and/or a \fBvalidator\fR regular expression in the YAML configuration. Both the type and the validator must be satisfied for the tool to proceed.
+Tool parameters can be validated before execution by specifying their
+\fBtype\fR and/or a \fBvalidator\fR regular expression in the YAML
+configuration. Both the type and the validator must be satisfied for the tool
+to proceed.
 
 .SS Supported Types
 .TP
 .B path
-A valid shell path. It cannot contain unescaped spaces or shell control characters (e.g., ;, &, |, <, >, $, (, ), `, \, ", ', *, ?, [, ], !, {, }).
+A valid shell path. It cannot contain unescaped spaces or shell control
+characters (e.g., ;, &, |, <, >, $, (, ), `, \\, ", ', *, ?, [, ], !, {, }).
 .TP
 .B directory
 A path pointing to an existing directory on the host system.
@@ -100,7 +104,8 @@ A path pointing to an existing directory on the host system.
 A path pointing to an existing file on the host system.
 .TP
 .B number
-A valid number (integer or floating point), validated using \fBstrconv.ParseFloat\fR.
+A valid number (integer or floating point), validated using
+\fBstrconv.ParseFloat\fR.
 .TP
 .B integer
 A valid integer, validated using \fBstrconv.Atoi\fR.
@@ -118,7 +123,9 @@ A path pointing to an existing directory within the scratch space.
 A path pointing to an existing file within the scratch space.
 
 .SS Custom Validation
-The \fBvalidator\fR field allows specifying a regular expression that the parameter value must satisfy. Both type and validator must pass if both are defined.
+The \fBvalidator\fR field allows specifying a regular expression that the
+parameter value must satisfy. Both type and validator must pass if both are
+defined.
 
 .SH SCRATCH SPACE
 When a scratch directory is provided via \fB\-tmpdir\fR or \fBtmpDir\fR,
@@ -135,9 +142,9 @@ It is highly recommended to run \fBsimple-mcp\fR as a dedicated non-root user
 (e.g., \fBsimple-mcp\fR). The provided systemd service is configured to run as
 this user and applies several hardening measures.
 
-If specific tools require elevated privileges (e.g., \fBiptables\fR), they should
-be granted using \fBAmbientCapabilities\fR in the systemd unit file instead of
-running the server as root.
+If specific tools require elevated privileges (e.g., \fBiptables\fR), they
+should be granted using \fBAmbientCapabilities\fR in the systemd unit file
+instead of running the server as root.
 
 .SS Restricting Network Access
 The provided systemd service binds to \fB127.0.0.1\fR (localhost) by default.
@@ -160,8 +167,9 @@ Do not expose the raw port 8080 to the public internet.
 
 .SS Parameters and Shell Injection
 \fBsimple-mcp\fR uses environment variables to pass parameters to shell commands.
-This prevents direct command injection (e.g., passing \fIdummy; touch /tmp/evil\fR
-as a parameter will not execute the second command).
+This prevents direct command injection (e.g., passing
+\fIdummy; touch /tmp/evil\fR as a parameter will not execute the second
+command).
 
 However, users must still be careful when designing tool commands:
 .IP \[bu] 2

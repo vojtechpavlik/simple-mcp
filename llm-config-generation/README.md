@@ -10,7 +10,7 @@ that understands the nuances of the server's security model.
 
 ## **Files**
 
-* **system\_prompt\_mcp\_architect.md**: This is the core instruction set for
+* **system_prompt_mcp_architect.md**: This is the core instruction set for
   the LLM. It defines the rules for generating secure YAML configurations and
   hardened Systemd service files. It specifically addresses:
   * **Parameter Quoting:** Enforcing correct shell variable usage
@@ -27,7 +27,7 @@ that understands the nuances of the server's security model.
 1. **Prepare the Context:**  
    * Gather the simple-mcp source code files (or just the critical ones like
      executor.go, config.go, and main.go).
-   * Copy the content of system\_prompt\_mcp\_architect.md.  
+   * Copy the content of system_prompt_mcp_architect.md.
 2. **Prompt the LLM:**  
    * Paste the system prompt into the LLM's chat interface.  
    * Upload the source code files so the LLM has perfect context of the
@@ -50,7 +50,7 @@ as root but should be as restricted as possible."
    * Place simple-mcp.service in /etc/systemd/system/.  
    * Reload systemd and start the service:  
      sudo systemctl daemon-reload  
-     sudo systemctl enable \--now simple-mcp
+     sudo systemctl enable --now simple-mcp
 
 ## **Why use this?**
 
