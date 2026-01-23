@@ -71,8 +71,8 @@ spec:
           validator: "^[a-z0-9.-]+$"
 
     - name: GetKernelLog
-      description: "Retrieves the last 10 lines from the kernel message buffer (dmesg). Useful for hardware or driver issues."
-      command: "dmesg -T | tail -n 10"
+      description: "Retrieves the last 10 lines from the kernel message buffer. Useful for hardware or driver issues."
+      command: "journalctl -k -n 10 --no-pager"
 
     - name: GetNetworkConnections
       description: "Lists all active TCP and UDP network connections and listening ports (similar to netstat)."

@@ -4,9 +4,30 @@ After=network.target
 
 [Service]
 Type=simple
+User=simple-mcp
+Group=simple-mcp
+SupplementaryGroups=systemd-journal
 ExecStart=/usr/bin/simple-mcp --config /etc/simple-mcp/simple-mcp.yaml --listen-addr localhost:8080
 Restart=on-failure
 RestartSec=5s
+
+# Hardening
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictRealtime=yes
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_SYSLOG
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_SYSLOG
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictNamespaces=yes
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
 
 [Install]
 WantedBy=multi-user.target

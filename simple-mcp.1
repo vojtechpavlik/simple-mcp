@@ -128,7 +128,16 @@ resources into the scratch space. All file operations are restricted to the
 specified directory.
 .SH SECURITY
 Since \fBsimple-mcp\fR provides shell access, it is critical to restrict network
-access.
+access and run with minimal privileges.
+
+.SS Non-Root Execution
+It is highly recommended to run \fBsimple-mcp\fR as a dedicated non-root user
+(e.g., \fBsimple-mcp\fR). The provided systemd service is configured to run as
+this user and applies several hardening measures.
+
+If specific tools require elevated privileges (e.g., \fBiptables\fR), they should
+be granted using \fBAmbientCapabilities\fR in the systemd unit file instead of
+running the server as root.
 
 .SS Restricting Network Access
 The provided systemd service binds to \fB127.0.0.1\fR (localhost) by default.

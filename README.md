@@ -142,6 +142,16 @@ Use the `-server` flag to specify the server address (default: `localhost:8080`)
 **Important:** This tool provides shell execution capabilities. Do not expose
 this service to the public internet without authentication.
 
+### **Non-Root Execution**
+
+It is highly recommended to run `simple-mcp` as a dedicated non-root user (e.g.,
+`simple-mcp`). The provided `simple-mcp.service` is configured to run as this
+user and uses Systemd's hardening features to limit the process's capabilities.
+
+If your tools require specific privileges (like `iptables` or `dmesg`), you
+should grant them via `AmbientCapabilities` in the service file rather than
+running the entire server as root.
+
 ### **Restricting Network Access**
 
 By default, simple-mcp binds to localhost:8080, allowing only local connections.
