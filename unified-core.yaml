@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: DynamicContextSource
 metadata:
-  name: dynamic-mcp-context
+  name: unified-core-mcp
 spec:
   resources:
     # --- Existing System Context ---

@@ -161,7 +161,7 @@ func TestLoadConfig_DefaultFile(t *testing.T) {
 	}
 
 	// Basic validation of the default config content
-	expectedName := "dynamic-mcp-context"
+	expectedName := "simple-mcp"
 	if cfg.Metadata.Name != expectedName {
 		t.Errorf("Default config name mismatch. Expected '%s', got '%s'", expectedName, cfg.Metadata.Name)
 	}
