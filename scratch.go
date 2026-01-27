@@ -17,146 +17,184 @@ import (
 
 	"regexp"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// Input structs for scratch tools
+type CreateFileRequest struct {
+	Path    string `json:"path" jsonschema:"required,description=The path to the file within the scratch space."`
+	Content string `json:"content" jsonschema:"required,description=The content of the file. Do not forget to include a newline character on the last line of a text file."`
+}
+
+type ReadFileRequest struct {
+	Path string `json:"path" jsonschema:"required,description=The path to the file within the scratch space."`
+}
+
+type DeleteFileRequest struct {
+	Path string `json:"path" jsonschema:"required,description=The path to the file within the scratch space."`
+}
+
+type ReplaceInFileRequest struct {
+	Path        string `json:"path" jsonschema:"required,description=The path to the file within the scratch space."`
+	Pattern     string `json:"pattern" jsonschema:"required,description=The regular expression pattern to search for."`
+	Replacement string `json:"replacement" jsonschema:"required,description=The replacement string. Supports capture groups (e.g., $1)."`
+	ReplaceAll  bool   `json:"replaceAll,omitempty" jsonschema:"description=If true, replace all occurrences. If false (default), replace only the first occurrence."`
+}
+
+type ListDirectoryRequest struct {
+	Path string `json:"path" jsonschema:"required,description=The path to the directory within the scratch space. Absolute paths are not allowed."`
+}
+
+type CreateDirectoryRequest struct {
+	Path string `json:"path" jsonschema:"required,description=The path to the directory within the scratch space."`
+}
+
+type RemoveDirectoryRequest struct {
+	Path string `json:"path" jsonschema:"required,description=The path to the directory within the scratch space."`
+}
+
+type CopyResourceToFileRequest struct {
+	ResourceURI string `json:"resourceURI" jsonschema:"required,description=The URI of the resource to copy."`
+	Path        string `json:"path" jsonschema:"required,description=The path to the destination file within the scratch space."`
+}
+
+type CopyResourceTreeRequest struct {
+	ResourcePrefix  string `json:"resourcePrefix" jsonschema:"required,description=The prefix of the resource URIs to copy."`
+	DestinationPath string `json:"destinationPath" jsonschema:"required,description=The destination directory path within the scratch space."`
+}
+
+// EmptyOutput is used when we return the result via *mcp.CallToolResult directly
+type EmptyOutput struct{}
+
+// Helper to create a text result
+func newTextResult(text string) *mcp.CallToolResult {
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{
+				Text: text,
+			},
+		},
+	}
+}
+
+// Helper to create an error result
+func newErrorResult(text string) *mcp.CallToolResult {
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{
+				Text: text,
+			},
+		},
+		IsError: true,
+	}
+}
+
 // registerScratchTools registers the file and directory manipulation tools.
-func registerScratchTools(mcpServer *server.MCPServer, resourceMap map[string]ResourceItem, tmpDir string, verbose bool) {
-	createFileTool := mcp.NewTool("CreateFile",
-		mcp.WithDescription("Creates a new file in the scratch space."),
-		mcp.WithString("path", mcp.Required(), mcp.Description("The path to the file within the scratch space.")),
-		mcp.WithString("content", mcp.Required(), mcp.Description("The content of the file. Do not forget to include a newline character on the last line of a text file.")))
-	mcpServer.AddTool(createFileTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		path, _ := request.RequireString("path")
-		content, _ := request.RequireString("content")
-		if verbose {
-			log.Printf("Handling CreateFile request for path: %s", path)
-		}
-		return createFile(tmpDir, path, content)
-	})
-	log.Printf("Registered built-in scratch tool: %s", createFileTool.Name)
+func registerScratchTools(mcpServer *mcp.Server, resourceMap map[string]ResourceItem, tmpDir string, verbose bool) {
+	mcp.AddTool(mcpServer,
+		&mcp.Tool{Name: "CreateFile", Description: "Creates a new file in the scratch space."},
+		func(ctx context.Context, request *mcp.CallToolRequest, req CreateFileRequest) (*mcp.CallToolResult, EmptyOutput, error) {
+			if verbose {
+				log.Printf("Handling CreateFile request for path: %s", req.Path)
+			}
+			res, err := createFile(tmpDir, req.Path, req.Content)
+			return res, EmptyOutput{}, err
+		})
 
-	readFileTool := mcp.NewTool("ReadFile",
-		mcp.WithDescription("Reads the content of a file in the scratch space."),
-		mcp.WithString("path", mcp.Required(), mcp.Description("The path to the file within the scratch space.")))
-	mcpServer.AddTool(readFileTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		path, _ := request.RequireString("path")
-		if verbose {
-			log.Printf("Handling ReadFile request for path: %s", path)
-		}
-		return readFile(tmpDir, path)
-	})
-	log.Printf("Registered built-in scratch tool: %s", readFileTool.Name)
+	mcp.AddTool(mcpServer,
+		&mcp.Tool{Name: "ReadFile", Description: "Reads the content of a file in the scratch space."},
+		func(ctx context.Context, request *mcp.CallToolRequest, req ReadFileRequest) (*mcp.CallToolResult, EmptyOutput, error) {
+			if verbose {
+				log.Printf("Handling ReadFile request for path: %s", req.Path)
+			}
+			res, err := readFile(tmpDir, req.Path)
+			return res, EmptyOutput{}, err
+		})
 
-	deleteFileTool := mcp.NewTool("DeleteFile",
-		mcp.WithDescription("Deletes a file in the scratch space."),
-		mcp.WithString("path", mcp.Required(), mcp.Description("The path to the file within the scratch space.")))
-	mcpServer.AddTool(deleteFileTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		path, _ := request.RequireString("path")
-		if verbose {
-			log.Printf("Handling DeleteFile request for path: %s", path)
-		}
-		return deleteFile(tmpDir, path)
-	})
-	log.Printf("Registered built-in scratch tool: %s", deleteFileTool.Name)
+	mcp.AddTool(mcpServer,
+		&mcp.Tool{Name: "DeleteFile", Description: "Deletes a file in the scratch space."},
+		func(ctx context.Context, request *mcp.CallToolRequest, req DeleteFileRequest) (*mcp.CallToolResult, EmptyOutput, error) {
+			if verbose {
+				log.Printf("Handling DeleteFile request for path: %s", req.Path)
+			}
+			res, err := deleteFile(tmpDir, req.Path)
+			return res, EmptyOutput{}, err
+		})
 
-	replaceInFileTool := mcp.NewTool("ReplaceInFile",
-		mcp.WithDescription("Replaces a pattern in a file in the scratch space using a regular expression."),
-		mcp.WithString("path", mcp.Required(), mcp.Description("The path to the file within the scratch space.")),
-		mcp.WithString("pattern", mcp.Required(), mcp.Description("The regular expression pattern to search for.")),
-		mcp.WithString("replacement", mcp.Required(), mcp.Description("The replacement string. Supports capture groups (e.g., $1).")),
-		mcp.WithBoolean("replaceAll", mcp.Description("If true, replace all occurrences. If false (default), replace only the first occurrence.")))
-	mcpServer.AddTool(replaceInFileTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		path, _ := request.RequireString("path")
-		pattern, _ := request.RequireString("pattern")
-		replacement, _ := request.RequireString("replacement")
-		replaceAll := request.GetBool("replaceAll", false)
-		if verbose {
-			log.Printf("Handling ReplaceInFile request for path: %s", path)
-		}
-		return replaceInFile(tmpDir, path, pattern, replacement, replaceAll)
-	})
-	log.Printf("Registered built-in scratch tool: %s", replaceInFileTool.Name)
+	mcp.AddTool(mcpServer,
+		&mcp.Tool{Name: "ReplaceInFile", Description: "Replaces a pattern in a file in the scratch space using a regular expression."},
+		func(ctx context.Context, request *mcp.CallToolRequest, req ReplaceInFileRequest) (*mcp.CallToolResult, EmptyOutput, error) {
+			if verbose {
+				log.Printf("Handling ReplaceInFile request for path: %s", req.Path)
+			}
+			res, err := replaceInFile(tmpDir, req.Path, req.Pattern, req.Replacement, req.ReplaceAll)
+			return res, EmptyOutput{}, err
+		})
 
-	listDirectoryTool := mcp.NewTool("ListDirectory",
-		mcp.WithDescription("Lists the contents of a directory in the scratch space."),
-		mcp.WithString("path", mcp.Required(), mcp.Description("The path to the directory within the scratch space. Absolute paths are not allowed.")))
-	mcpServer.AddTool(listDirectoryTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		path, _ := request.RequireString("path")
-		if verbose {
-			log.Printf("Handling ListDirectory request for path: %s", path)
-		}
-		return listDirectory(tmpDir, path)
-	})
-	log.Printf("Registered built-in scratch tool: %s", listDirectoryTool.Name)
+	mcp.AddTool(mcpServer,
+		&mcp.Tool{Name: "ListDirectory", Description: "Lists the contents of a directory in the scratch space."},
+		func(ctx context.Context, request *mcp.CallToolRequest, req ListDirectoryRequest) (*mcp.CallToolResult, EmptyOutput, error) {
+			if verbose {
+				log.Printf("Handling ListDirectory request for path: %s", req.Path)
+			}
+			res, err := listDirectory(tmpDir, req.Path)
+			return res, EmptyOutput{}, err
+		})
 
-	createDirectoryTool := mcp.NewTool("CreateDirectory",
-		mcp.WithDescription("Creates a new directory in the scratch space."),
-		mcp.WithString("path", mcp.Required(), mcp.Description("The path to the directory within the scratch space.")))
-	mcpServer.AddTool(createDirectoryTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		path, _ := request.RequireString("path")
-		if verbose {
-			log.Printf("Handling CreateDirectory request for path: %s", path)
-		}
-		return createDirectory(tmpDir, path)
-	})
-	log.Printf("Registered built-in scratch tool: %s", createDirectoryTool.Name)
+	mcp.AddTool(mcpServer,
+		&mcp.Tool{Name: "CreateDirectory", Description: "Creates a new directory in the scratch space."},
+		func(ctx context.Context, request *mcp.CallToolRequest, req CreateDirectoryRequest) (*mcp.CallToolResult, EmptyOutput, error) {
+			if verbose {
+				log.Printf("Handling CreateDirectory request for path: %s", req.Path)
+			}
+			res, err := createDirectory(tmpDir, req.Path)
+			return res, EmptyOutput{}, err
+		})
 
-	removeDirectoryTool := mcp.NewTool("RemoveDirectory",
-		mcp.WithDescription("Removes an empty directory in the scratch space."),
-		mcp.WithString("path", mcp.Required(), mcp.Description("The path to the directory within the scratch space.")))
-	mcpServer.AddTool(removeDirectoryTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		path, _ := request.RequireString("path")
-		if verbose {
-			log.Printf("Handling RemoveDirectory request for path: %s", path)
-		}
-		return removeDirectory(tmpDir, path)
-	})
-	log.Printf("Registered built-in scratch tool: %s", removeDirectoryTool.Name)
+	mcp.AddTool(mcpServer,
+		&mcp.Tool{Name: "RemoveDirectory", Description: "Removes an empty directory in the scratch space."},
+		func(ctx context.Context, request *mcp.CallToolRequest, req RemoveDirectoryRequest) (*mcp.CallToolResult, EmptyOutput, error) {
+			if verbose {
+				log.Printf("Handling RemoveDirectory request for path: %s", req.Path)
+			}
+			res, err := removeDirectory(tmpDir, req.Path)
+			return res, EmptyOutput{}, err
+		})
 
-	copyResourceToFileTool := mcp.NewTool("CopyResourceToFile",
-		mcp.WithDescription("Copies the content of a resource to a file in the scratch space."),
-		mcp.WithString("resourceURI", mcp.Required(), mcp.Description("The URI of the resource to copy.")),
-		mcp.WithString("path", mcp.Required(), mcp.Description("The path to the destination file within the scratch space.")))
-	mcpServer.AddTool(copyResourceToFileTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		resourceURI, _ := request.RequireString("resourceURI")
-		path, _ := request.RequireString("path")
-		if verbose {
-			log.Printf("Handling CopyResourceToFile request for resourceURI: %s, path: %s", resourceURI, path)
-		}
-		return copyResourceToFile(resourceMap, tmpDir, verbose, resourceURI, path)
-	})
-	log.Printf("Registered built-in scratch tool: %s", copyResourceToFileTool.Name)
+	mcp.AddTool(mcpServer,
+		&mcp.Tool{Name: "CopyResourceToFile", Description: "Copies the content of a resource to a file in the scratch space."},
+		func(ctx context.Context, request *mcp.CallToolRequest, req CopyResourceToFileRequest) (*mcp.CallToolResult, EmptyOutput, error) {
+			if verbose {
+				log.Printf("Handling CopyResourceToFile request for resourceURI: %s, path: %s", req.ResourceURI, req.Path)
+			}
+			res, err := copyResourceToFile(resourceMap, tmpDir, verbose, req.ResourceURI, req.Path)
+			return res, EmptyOutput{}, err
+		})
 
-	copyResourceTreeTool := mcp.NewTool("CopyResourceTree",
-		mcp.WithDescription("Recursively copies all resources whose URIs start with a given prefix into a directory in the scratch space."),
-		mcp.WithString("resourcePrefix", mcp.Required(), mcp.Description("The prefix of the resource URIs to copy.")),
-		mcp.WithString("destinationPath", mcp.Required(), mcp.Description("The destination directory path within the scratch space.")))
-	mcpServer.AddTool(copyResourceTreeTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		resourcePrefix, _ := request.RequireString("resourcePrefix")
-		destinationPath, _ := request.RequireString("destinationPath")
-		if verbose {
-			log.Printf("Handling CopyResourceTree request for resourcePrefix: %s, destinationPath: %s", resourcePrefix, destinationPath)
-		}
-		return copyResourceTree(resourceMap, tmpDir, verbose, resourcePrefix, destinationPath)
-	})
-	log.Printf("Registered built-in scratch tool: %s", copyResourceTreeTool.Name)
+	mcp.AddTool(mcpServer,
+		&mcp.Tool{Name: "CopyResourceTree", Description: "Recursively copies all resources whose URIs start with a given prefix into a directory in the scratch space."},
+		func(ctx context.Context, request *mcp.CallToolRequest, req CopyResourceTreeRequest) (*mcp.CallToolResult, EmptyOutput, error) {
+			if verbose {
+				log.Printf("Handling CopyResourceTree request for resourcePrefix: %s, destinationPath: %s", req.ResourcePrefix, req.DestinationPath)
+			}
+			res, err := copyResourceTree(resourceMap, tmpDir, verbose, req.ResourcePrefix, req.DestinationPath)
+			return res, EmptyOutput{}, err
+		})
 }
 
 func copyResourceToFile(resourceMap map[string]ResourceItem, tmpDir string, verbose bool, resourceURI, path string) (*mcp.CallToolResult, error) {
 	item, ok := resourceMap[resourceURI]
 	if !ok {
-		return mcp.NewToolResultError(fmt.Sprintf("resource not found: %s", resourceURI)), nil
+		return newErrorResult(fmt.Sprintf("resource not found: %s", resourceURI)), nil
 	}
 
 	content, err := getResourceContent(item, tmpDir, verbose)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to get resource content for %s: %v", resourceURI, err)), nil
+		return newErrorResult(fmt.Sprintf("failed to get resource content for %s: %v", resourceURI, err)), nil
 	}
 
 	if content == "" {
-		return mcp.NewToolResultError(fmt.Sprintf("resource %s has no content or command", resourceURI)), nil
+		return newErrorResult(fmt.Sprintf("resource %s has no content or command", resourceURI)), nil
 	}
 
 	return createFile(tmpDir, path, content)
@@ -178,7 +216,7 @@ func copyResourceTree(resourceMap map[string]ResourceItem, tmpDir string, verbos
 	}
 
 	if len(matchedURIs) == 0 {
-		return mcp.NewToolResultError(fmt.Sprintf("no resources found matching prefix: %s", resourcePrefix)), nil
+		return newErrorResult(fmt.Sprintf("no resources found matching prefix: %s", resourcePrefix)), nil
 	}
 
 	for _, uri := range matchedURIs {
@@ -193,11 +231,11 @@ func copyResourceTree(resourceMap map[string]ResourceItem, tmpDir string, verbos
 
 		content, err := getResourceContent(item, tmpDir, verbose)
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("failed to get resource content for %s: %v", uri, err)), nil
+			return newErrorResult(fmt.Sprintf("failed to get resource content for %s: %v", uri, err)), nil
 		}
 
 		if content == "" {
-			return mcp.NewToolResultError(fmt.Sprintf("resource %s has no content or command", uri)), nil
+			return newErrorResult(fmt.Sprintf("resource %s has no content or command", uri)), nil
 		}
 
 		res, err := createFile(tmpDir, targetPath, content)
@@ -209,7 +247,7 @@ func copyResourceTree(resourceMap map[string]ResourceItem, tmpDir string, verbos
 		}
 	}
 
-	return mcp.NewToolResultText(fmt.Sprintf("Successfully copied %d resources to %s.", len(matchedURIs), destinationPath)), nil
+	return newTextResult(fmt.Sprintf("Successfully copied %d resources to %s.", len(matchedURIs), destinationPath)), nil
 }
 
 func resolvePath(base, path string) (string, error) {
@@ -270,70 +308,70 @@ func resolvePath(base, path string) (string, error) {
 func createFile(tmpDir, path, content string) (*mcp.CallToolResult, error) {
 	fullPath, err := resolvePath(tmpDir, path)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return newErrorResult(err.Error()), nil
 	}
 	dir := filepath.Dir(fullPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to create parent directories: %v", err)), nil
+		return newErrorResult(fmt.Sprintf("failed to create parent directories: %v", err)), nil
 	}
 	if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to create file: %v", err)), nil
+		return newErrorResult(fmt.Sprintf("failed to create file: %v", err)), nil
 	}
-	return mcp.NewToolResultText("File created successfully."), nil
+	return newTextResult("File created successfully."), nil
 }
 
 func readFile(tmpDir, path string) (*mcp.CallToolResult, error) {
 	fullPath, err := resolvePath(tmpDir, path)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return newErrorResult(err.Error()), nil
 	}
 	content, err := os.ReadFile(fullPath)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to read file: %v", err)), nil
+		return newErrorResult(fmt.Sprintf("failed to read file: %v", err)), nil
 	}
-	return mcp.NewToolResultText(string(content)), nil
+	return newTextResult(string(content)), nil
 }
 
 func deleteFile(tmpDir, path string) (*mcp.CallToolResult, error) {
 	fullPath, err := resolvePath(tmpDir, path)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return newErrorResult(err.Error()), nil
 	}
 	if err := os.Remove(fullPath); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to delete file: %v", err)), nil
+		return newErrorResult(fmt.Sprintf("failed to delete file: %v", err)), nil
 	}
-	return mcp.NewToolResultText("File deleted successfully."), nil
+	return newTextResult("File deleted successfully."), nil
 }
 
 func replaceInFile(tmpDir, path, pattern, replacement string, replaceAll bool) (*mcp.CallToolResult, error) {
 	fullPath, err := resolvePath(tmpDir, path)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return newErrorResult(err.Error()), nil
 	}
 	contentBytes, err := os.ReadFile(fullPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf("file not found: %s", path)
 		}
-		return mcp.NewToolResultError(fmt.Sprintf("failed to read file: %v", err)), nil
+		return newErrorResult(fmt.Sprintf("failed to read file: %v", err)), nil
 	}
 	content := string(contentBytes)
 
 	re, err := regexp.Compile("(?s)" + pattern)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("invalid regular expression: %v", err)), nil
+		return newErrorResult(fmt.Sprintf("invalid regular expression: %v", err)), nil
 	}
 
 	var newContent string
 	if replaceAll {
 		if !re.MatchString(content) {
-			return mcp.NewToolResultError("pattern not found in file"), nil
+			return newErrorResult("pattern not found in file"), nil
 		}
 		newContent = re.ReplaceAllString(content, replacement)
 	} else {
 		indices := re.FindStringSubmatchIndex(content)
 		if indices == nil {
-			return mcp.NewToolResultError("pattern not found in file"), nil
+			return newErrorResult("pattern not found in file"), nil
 		}
 		result := []byte{}
 		result = re.ExpandString(result, replacement, content, indices)
@@ -341,19 +379,19 @@ func replaceInFile(tmpDir, path, pattern, replacement string, replaceAll bool) (
 	}
 
 	if err := os.WriteFile(fullPath, []byte(newContent), 0644); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to write modified file: %v", err)), nil
+		return newErrorResult(fmt.Sprintf("failed to write modified file: %v", err)), nil
 	}
-	return mcp.NewToolResultText("File modified successfully."), nil
+	return newTextResult("File modified successfully."), nil
 }
 
 func listDirectory(tmpDir, path string) (*mcp.CallToolResult, error) {
 	fullPath, err := resolvePath(tmpDir, path)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return newErrorResult(err.Error()), nil
 	}
 	entries, err := os.ReadDir(fullPath)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to list directory: %v", err)), nil
+		return newErrorResult(fmt.Sprintf("failed to list directory: %v", err)), nil
 	}
 	var out strings.Builder
 	for _, entry := range entries {
@@ -363,27 +401,27 @@ func listDirectory(tmpDir, path string) (*mcp.CallToolResult, error) {
 			fmt.Fprintf(&out, "%s\n", entry.Name())
 		}
 	}
-	return mcp.NewToolResultText(out.String()), nil
+	return newTextResult(out.String()), nil
 }
 
 func createDirectory(tmpDir, path string) (*mcp.CallToolResult, error) {
 	fullPath, err := resolvePath(tmpDir, path)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return newErrorResult(err.Error()), nil
 	}
 	if err := os.MkdirAll(fullPath, 0755); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to create directory: %v", err)), nil
+		return newErrorResult(fmt.Sprintf("failed to create directory: %v", err)), nil
 	}
-	return mcp.NewToolResultText("Directory created successfully."), nil
+	return newTextResult("Directory created successfully."), nil
 }
 
 func removeDirectory(tmpDir, path string) (*mcp.CallToolResult, error) {
 	fullPath, err := resolvePath(tmpDir, path)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return newErrorResult(err.Error()), nil
 	}
 	if err := os.Remove(fullPath); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to remove directory: %v", err)), nil
+		return newErrorResult(fmt.Sprintf("failed to remove directory: %v", err)), nil
 	}
-	return mcp.NewToolResultText("Directory removed successfully."), nil
+	return newTextResult("Directory removed successfully."), nil
 }

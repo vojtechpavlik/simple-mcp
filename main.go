@@ -15,6 +15,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -23,8 +24,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func countLines(s string) int {
@@ -57,6 +57,10 @@ func resolveOptions(cfg *Config, cliListenAddr string, cliTmpDir string, cliVerb
 	}
 
 	return finalListenAddr, finalTmpDir, finalVerbose, finalMaxAsyncTasks
+}
+
+func ptr[T any](v T) *T {
+	return &v
 }
 
 func main() {
@@ -111,29 +115,40 @@ func main() {
 	}
 	log.Printf("Cached %d resource definitions.", len(resourceMap))
 
-	mcpServer := server.NewMCPServer(
-		cfg.Metadata.Name,
-		cfg.APIVersion,
-		server.WithToolCapabilities(false),
-		server.WithRecovery(),                       // Gracefully handle panics in handlers
-		server.WithResourceCapabilities(true, true), // Advertise resource support
-	)
-	log.Printf("MCP Server %s with API %s created.", cfg.Metadata.Name, cfg.APIVersion)
+	// Define the SSE handler
+	sseHandler := mcp.NewSSEHandler(func(req *http.Request) *mcp.Server {
+		s := mcp.NewServer(&mcp.Implementation{
+			Name:    cfg.Metadata.Name,
+			Version: cfg.APIVersion,
+		}, &mcp.ServerOptions{
+			Capabilities: &mcp.ServerCapabilities{
+				Resources: &mcp.ResourceCapabilities{
+					Subscribe:   true,
+					ListChanged: true,
+				},
+				Tools: &mcp.ToolCapabilities{
+					ListChanged: true,
+				},
+			},
+		})
 
-	registerBuiltinTools(mcpServer, taskStore, resourceMap, finalTmpDir, finalVerbose)
-	registerConfigTools(mcpServer, cfg, taskStore, finalTmpDir, finalVerbose)
-	registerResources(mcpServer, cfg, finalTmpDir, finalVerbose)
+		registerBuiltinTools(s, taskStore, resourceMap, finalTmpDir, finalVerbose)
+		registerConfigTools(s, cfg, taskStore, finalTmpDir, finalVerbose)
+		registerResources(s, cfg, finalTmpDir, finalVerbose)
 
-	if finalTmpDir != "" {
-		registerScratchTools(mcpServer, resourceMap, finalTmpDir, finalVerbose)
-	}
+		if finalTmpDir != "" {
+			registerScratchTools(s, resourceMap, finalTmpDir, finalVerbose)
+		}
 
-	log.Printf("Creating Streamable HTTP server...")
-	httpOpts := []server.StreamableHTTPOption{}
-	httpServer := server.NewStreamableHTTPServer(mcpServer, httpOpts...)
+		return s
+	}, nil)
 
 	log.Printf("MCP server starting, listening on %s/mcp ...", finalListenAddr)
-	if err := httpServer.Start(finalListenAddr); err != nil {
+	http.Handle("/mcp", sseHandler)
+	// Also handle /mcp/ for flexibility
+	http.Handle("/mcp/", sseHandler)
+
+	if err := http.ListenAndServe(finalListenAddr, nil); err != nil {
 		log.Fatalf("ERROR: Could not start HTTP server: %v", err)
 	}
 }
@@ -160,140 +175,125 @@ func checkTmpDir(path string) error {
 	return nil
 }
 
+// Input structs for builtin tools
+type ListPendingTasksRequest struct{}
+type TaskStatusRequest struct {
+	TaskID string `json:"taskID" jsonschema:"required,description=The Task ID (e.g. task-...) or full Task URI (e.g. simple-mcp://tasks/...)"`
+}
+type ListResourcesToolRequest struct{}
+type GetResourceToolRequest struct {
+	ResourceURI string `json:"resourceURI" jsonschema:"required,description=The full URI of the resource (e.g. simple-mcp://system/uptime)."`
+}
+type SearchResourcesRequest struct {
+	Query string `json:"query" jsonschema:"required,description=The regular expression to search for."`
+}
 
 // registerBuiltinTools adds the core infrastructure tools required for
 // mcphost compatibility and async task management.
-func registerBuiltinTools(mcpServer *server.MCPServer, taskStore *TaskStore, resourceMap map[string]ResourceItem, tmpDir string, verbose bool) {
+func registerBuiltinTools(mcpServer *mcp.Server, taskStore *TaskStore, resourceMap map[string]ResourceItem, tmpDir string, verbose bool) {
 	// Helps the LLM recover context if it forgets a task ID.
-	listTasksTool := mcp.NewTool(
-		"ListPendingTasks",
-		mcp.WithDescription("Lists all asynchronous tasks that are currently 'pending' or 'running'."),
-	)
-	mcpServer.AddTool(listTasksTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		if verbose {
-			log.Printf("Handling ListPendingTasks request.")
-		}
-		activeTasks := taskStore.ListActiveTasks()
-		if len(activeTasks) == 0 {
-			return mcp.NewToolResultText("No active (pending or running) tasks found."), nil
-		}
+	mcp.AddTool(mcpServer,
+		&mcp.Tool{Name: "ListPendingTasks", Description: "Lists all asynchronous tasks that are currently 'pending' or 'running'."},
+		func(ctx context.Context, request *mcp.CallToolRequest, req ListPendingTasksRequest) (*mcp.CallToolResult, EmptyOutput, error) {
+			if verbose {
+				log.Printf("Handling ListPendingTasks request.")
+			}
+			activeTasks := taskStore.ListActiveTasks()
+			if len(activeTasks) == 0 {
+				return newTextResult("No active (pending or running) tasks found."), EmptyOutput{}, nil
+			}
 
-		var b strings.Builder
-		b.WriteString(fmt.Sprintf("Found %d active tasks:\n\n", len(activeTasks)))
-		for _, task := range activeTasks {
-			b.WriteString(fmt.Sprintf("Tool: %s\nTaskID: %s\nStatus: %s\nRunning For: %s\n\n",
-				task.ToolName, task.ID, task.Status, time.Since(task.StartTime).Truncate(time.Second)))
-		}
-		return mcp.NewToolResultText(b.String()), nil
-	})
-	log.Printf("Registered built-in tool: %s", listTasksTool.Name)
+			var b strings.Builder
+			b.WriteString(fmt.Sprintf("Found %d active tasks:\n\n", len(activeTasks)))
+			for _, task := range activeTasks {
+				b.WriteString(fmt.Sprintf("Tool: %s\nTaskID: %s\nStatus: %s\nRunning For: %s\n\n",
+					task.ToolName, task.ID, task.Status, time.Since(task.StartTime).Truncate(time.Second)))
+			}
+			return newTextResult(b.String()), EmptyOutput{}, nil
+		})
+	log.Printf("Registered built-in tool: ListPendingTasks")
 
 	// Polling mechanism for clients that don't support async resource subscriptions.
-	taskStatusTool := mcp.NewTool(
-		"TaskStatus",
-		mcp.WithDescription("Gets the status of a long-running async task from its Task ID or URI."),
-		mcp.WithString(
-			"taskID",
-			mcp.Required(),
-			mcp.Description("The Task ID (e.g., task-...) or full Task URI (e.g., simple-mcp://tasks/...)"),
-		),
-	)
-	mcpServer.AddTool(taskStatusTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		taskID, _ := request.RequireString("taskID")
+	mcp.AddTool(mcpServer,
+		&mcp.Tool{Name: "TaskStatus", Description: "Gets the status of a long-running async task from its Task ID or URI."},
+		func(ctx context.Context, request *mcp.CallToolRequest, req TaskStatusRequest) (*mcp.CallToolResult, EmptyOutput, error) {
+			taskID := req.TaskID
+			if verbose {
+				log.Printf("Handling TaskStatus request for taskID: %s", taskID)
+			}
 
-		if verbose {
-			log.Printf("Handling TaskStatus request for taskID: %s", taskID)
-		}
+			if strings.HasPrefix(taskID, "simple-mcp://tasks/") {
+				taskID = strings.TrimPrefix(taskID, "simple-mcp://tasks/")
+			}
 
-		if strings.HasPrefix(taskID, "simple-mcp://tasks/") {
-			taskID = strings.TrimPrefix(taskID, "simple-mcp://tasks/")
-		}
+			task, ok := taskStore.Get(taskID)
+			if !ok {
+				log.Printf("TaskStatus request for non-existent ID: %s", taskID)
+				return newTextResult(fmt.Sprintf("Status: not_found\nMessage: No task found with ID: %s", taskID)), EmptyOutput{}, nil
+			}
 
-		task, ok := taskStore.Get(taskID)
-		if !ok {
-			log.Printf("TaskStatus request for non-existent ID: %s", taskID)
-			return mcp.NewToolResultText(fmt.Sprintf("Status: not_found\nMessage: No task found with ID: %s", taskID)), nil
-		}
-
-		log.Printf("Handling TaskStatus request for: %s", taskID)
-		return mcp.NewToolResultText(task.FormatStatus()), nil
-	})
-	log.Printf("Registered built-in tool: %s", taskStatusTool.Name)
+			log.Printf("Handling TaskStatus request for: %s", taskID)
+			return newTextResult(task.FormatStatus()), EmptyOutput{}, nil
+		})
+	log.Printf("Registered built-in tool: TaskStatus")
 
 	// Provides a discoverable list of system context resources.
-	listResourcesTool := mcp.NewTool(
-		"ListResources",
-		mcp.WithDescription("Lists all available system resources (context) provided by this server."),
-	)
-	mcpServer.AddTool(listResourcesTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		if verbose {
-			log.Printf("Handling ListResources request.")
-		}
-		var b strings.Builder
-		b.WriteString(fmt.Sprintf("Found %d resources:\n\n", len(resourceMap)))
-		for uri, item := range resourceMap {
-			b.WriteString(fmt.Sprintf("URI: %s\nDescription: %s\n\n", uri, item.Description))
-		}
-		return mcp.NewToolResultText(b.String()), nil
-	})
-	log.Printf("Registered built-in tool: %s", listResourcesTool.Name)
+	mcp.AddTool(mcpServer,
+		&mcp.Tool{Name: "ListResources", Description: "Lists all available system resources (context) provided by this server."},
+		func(ctx context.Context, request *mcp.CallToolRequest, req ListResourcesToolRequest) (*mcp.CallToolResult, EmptyOutput, error) {
+			if verbose {
+				log.Printf("Handling ListResources request.")
+			}
+			var b strings.Builder
+			b.WriteString(fmt.Sprintf("Found %d resources:\n\n", len(resourceMap)))
+			for uri, item := range resourceMap {
+				b.WriteString(fmt.Sprintf("URI: %s\nDescription: %s\n\n", uri, item.Description))
+			}
+			return newTextResult(b.String()), EmptyOutput{}, nil
+		})
+	log.Printf("Registered built-in tool: ListResources")
 
 	// Allows retrieving resource content via a tool call, bypassing client-side restrictions.
-	getResourceTool := mcp.NewTool(
-		"GetResource",
-		mcp.WithDescription("Gets the current content of a specific resource by its URI."),
-		mcp.WithString(
-			"resourceURI",
-			mcp.Required(),
-			mcp.Description("The full URI of the resource (e.g., simple-mcp://system/uptime)."),
-		),
-	)
-	mcpServer.AddTool(getResourceTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		resourceURI, _ := request.RequireString("resourceURI")
-		if verbose {
-			log.Printf("Handling GetResource request for: %s", resourceURI)
-		}
+	mcp.AddTool(mcpServer,
+		&mcp.Tool{Name: "GetResource", Description: "Gets the current content of a specific resource by its URI."},
+		func(ctx context.Context, request *mcp.CallToolRequest, req GetResourceToolRequest) (*mcp.CallToolResult, EmptyOutput, error) {
+			resourceURI := req.ResourceURI
+			if verbose {
+				log.Printf("Handling GetResource request for: %s", resourceURI)
+			}
 
-		item, ok := resourceMap[resourceURI]
-		if !ok {
-			return mcp.NewToolResultError(fmt.Sprintf("Resource not found: %s. Call ListResources to see available URIs.", resourceURI)), nil
-		}
+			item, ok := resourceMap[resourceURI]
+			if !ok {
+				return newErrorResult(fmt.Sprintf("Resource not found: %s. Call ListResources to see available URIs.", resourceURI)), EmptyOutput{}, nil
+			}
 
-		content, err := getResourceContent(item, tmpDir, verbose)
-		if err != nil {
-			// getResourceContent should not return errors, but we handle it just in case.
-			log.Printf("ERROR: Unexpected error getting resource content for %s: %v", resourceURI, err)
-			return mcp.NewToolResultError(fmt.Sprintf("Unexpected error getting resource content for %s: %v", resourceURI, err)), nil
-		}
+			content, err := getResourceContent(item, tmpDir, verbose)
+			if err != nil {
+				log.Printf("ERROR: Unexpected error getting resource content for %s: %v", resourceURI, err)
+				return newErrorResult(fmt.Sprintf("Unexpected error getting resource content for %s: %v", resourceURI, err)), EmptyOutput{}, nil
+			}
 
-		return mcp.NewToolResultText(content), nil
-	})
-	log.Printf("Registered built-in tool: %s", getResourceTool.Name)
+			return newTextResult(content), EmptyOutput{}, nil
+		})
+	log.Printf("Registered built-in tool: GetResource")
 
 	// Allows searching through resource definitions.
-	searchResourcesTool := mcp.NewTool(
-		"SearchResources",
-		mcp.WithDescription("Searches for resources by URI, description, or static content using a regular expression."),
-		mcp.WithString(
-			"query",
-			mcp.Required(),
-			mcp.Description("The regular expression to search for."),
-		),
-	)
-	mcpServer.AddTool(searchResourcesTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		query, _ := request.RequireString("query")
-		if verbose {
-			log.Printf("Handling SearchResources request with query: %s", query)
-		}
+	mcp.AddTool(mcpServer,
+		&mcp.Tool{Name: "SearchResources", Description: "Searches for resources by URI, description, or static content using a regular expression."},
+		func(ctx context.Context, request *mcp.CallToolRequest, req SearchResourcesRequest) (*mcp.CallToolResult, EmptyOutput, error) {
+			query := req.Query
+			if verbose {
+				log.Printf("Handling SearchResources request with query: %s", query)
+			}
 
-		result, err := searchResources(resourceMap, query)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
+			result, err := searchResources(resourceMap, query)
+			if err != nil {
+				return newErrorResult(err.Error()), EmptyOutput{}, nil
+			}
 
-		return mcp.NewToolResultText(result), nil
-	})
-	log.Printf("Registered built-in tool: %s", searchResourcesTool.Name)
+			return newTextResult(result), EmptyOutput{}, nil
+		})
+	log.Printf("Registered built-in tool: SearchResources")
 }
 
 // searchResources filters the resourceMap based on a regular expression query
@@ -355,36 +355,61 @@ func getResourceContent(item ResourceItem, tmpDir string, verbose bool) (string,
 	return combinedContent.String(), nil
 }
 
+// generateSchema creates a JSON Schema object for the tool parameters.
+func generateSchema(params []Parameter) map[string]interface{} {
+	properties := make(map[string]interface{})
+	required := []string{}
+
+	for _, param := range params {
+		properties[param.Name] = map[string]interface{}{
+			"type":        "string", // We treat everything as string for simplicity in cli args, but could be specific
+			"description": fmt.Sprintf("Parameter: %s", param.Name),
+		}
+		required = append(required, param.Name)
+	}
+
+	schema := map[string]interface{}{
+		"type":       "object",
+		"properties": properties,
+		"required":   required,
+	}
+	return schema
+}
+
 // registerConfigTools iterates through the configuration and registers
 // declared tools, routing them to sync or async handlers.
-func registerConfigTools(mcpServer *server.MCPServer, cfg *Config, taskStore *TaskStore, tmpDir string, verbose bool) {
+func registerConfigTools(mcpServer *mcp.Server, cfg *Config, taskStore *TaskStore, tmpDir string, verbose bool) {
 	for _, item := range cfg.Specification.Tools {
 		currentItem := item
-		var toolOptions []mcp.ToolOption
-		toolOptions = append(toolOptions, mcp.WithDescription(item.Description))
 
-		for _, param := range item.Parameters {
-			toolOptions = append(toolOptions, mcp.WithString(
-				param.Name,
-				mcp.Required(),
-				mcp.Description(fmt.Sprintf("Parameter: %s", param.Name)),
-			))
+		// Manual schema generation
+		inputSchema := generateSchema(item.Parameters)
+
+		toolDef := &mcp.Tool{
+			Name:        item.Name,
+			Description: item.Description,
+			InputSchema: inputSchema,
 		}
 
-		tool := mcp.NewTool(item.Name, toolOptions...)
-
-		handler := func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		mcp.AddTool(mcpServer, toolDef, func(ctx context.Context, request *mcp.CallToolRequest, params map[string]interface{}) (*mcp.CallToolResult, EmptyOutput, error) {
 			log.Printf("Handling request for tool: %s", currentItem.Name)
 
-			params := make(map[string]interface{})
+			// Validate parameters
 			for _, param := range currentItem.Parameters {
-				val, err := request.RequireString(param.Name)
-				if err != nil {
-					return mcp.NewToolResultError(err.Error()), nil
+				valRaw, ok := params[param.Name]
+				if !ok {
+					return newErrorResult(fmt.Sprintf("Missing parameter: %s", param.Name)), EmptyOutput{}, nil
 				}
+				val, ok := valRaw.(string)
+				if !ok {
+					// Try to convert non-string to string
+					val = fmt.Sprintf("%v", valRaw)
+				}
+
 				if err := validateParameter(param, val, tmpDir); err != nil {
-					return mcp.NewToolResultError(err.Error()), nil
+					return newErrorResult(err.Error()), EmptyOutput{}, nil
 				}
+				// Ensure params map has the string value
 				params[param.Name] = val
 			}
 
@@ -393,12 +418,10 @@ func registerConfigTools(mcpServer *server.MCPServer, cfg *Config, taskStore *Ta
 			}
 
 			if currentItem.Async {
-				return handleAsyncTask(ctx, currentItem, params, taskStore, tmpDir, verbose)
+				return handleAsyncTask(ctx, mcpServer, currentItem, params, taskStore, tmpDir, verbose)
 			}
 			return handleSyncTask(ctx, currentItem, params, tmpDir, verbose)
-		}
-
-		mcpServer.AddTool(tool, handler)
+		})
 
 		logMessage := fmt.Sprintf("Registered tool: %s", item.Name)
 		if item.Async {
@@ -528,40 +551,34 @@ func checkShellSafe(s string) error {
 	return nil
 }
 
-func handleSyncTask(ctx context.Context, currentItem ContextItem, params map[string]interface{}, tmpDir string, verbose bool) (*mcp.CallToolResult, error) {
+func handleSyncTask(ctx context.Context, currentItem ContextItem, params map[string]interface{}, tmpDir string, verbose bool) (*mcp.CallToolResult, EmptyOutput, error) {
 	output, exitCode, duration, err := executeCommand(currentItem, params, tmpDir)
 	if err != nil {
 		log.Printf("ERROR: Error executing command '%s' (Exit Code: %d): %v", currentItem.Name, exitCode, err)
 		// Return stderr output to the LLM to help with diagnosing the failure.
-		return mcp.NewToolResultError(fmt.Sprintf("Command failed: %v. Output: %s", err, output)), nil
+		return newErrorResult(fmt.Sprintf("Command failed: %v. Output: %s", err, output)), EmptyOutput{}, nil
 	}
 
 	log.Printf("Successfully executed tool '%s', output: %d bytes, %d lines, exit code: %d, duration: %s", currentItem.Name, len(output), countLines(output), exitCode, duration)
-	return mcp.NewToolResultText(output), nil
+	return newTextResult(output), EmptyOutput{}, nil
 }
 
-func handleAsyncTask(ctx context.Context, currentItem ContextItem, params map[string]interface{}, taskStore *TaskStore, tmpDir string, verbose bool) (*mcp.CallToolResult, error) {
-	srv := server.ServerFromContext(ctx)
-	if srv == nil {
-		log.Println("Error: could not get server from context for async task")
-		return mcp.NewToolResultError("could not get server from context"), nil
-	}
-
+func handleAsyncTask(ctx context.Context, srv *mcp.Server, currentItem ContextItem, params map[string]interface{}, taskStore *TaskStore, tmpDir string, verbose bool) (*mcp.CallToolResult, EmptyOutput, error) {
 	// Enforce concurrency lock: prevent multiple instances of the same long-running task.
 	if taskStore.HasActiveTask(currentItem.Name) {
 		log.Printf("Rejected async task %s: task is already running.", currentItem.Name)
-		return mcp.NewToolResultError(fmt.Sprintf("Task '%s' is already in progress. Call 'ListPendingTasks' or 'TaskStatus' to monitor it.", currentItem.Name)), nil
+		return newErrorResult(fmt.Sprintf("Task '%s' is already in progress. Call 'ListPendingTasks' or 'TaskStatus' to monitor it.", currentItem.Name)), EmptyOutput{}, nil
 	}
 
 	evictID, err := taskStore.PrepareSlot()
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return newErrorResult(err.Error()), EmptyOutput{}, nil
 	}
 
 	if evictID != "" {
 		log.Printf("Evicting oldest task: %s", evictID)
 		evictURI := fmt.Sprintf("simple-mcp://tasks/%s", evictID)
-		srv.RemoveResource(evictURI)
+		srv.RemoveResources(evictURI)
 		taskStore.Delete(evictID)
 	}
 
@@ -570,37 +587,39 @@ func handleAsyncTask(ctx context.Context, currentItem ContextItem, params map[st
 
 	task := taskStore.Create(jobID, currentItem.Name)
 
-	// Create a dynamic resource for this specific task ID. This follows the
-	// standard MCP pattern where a task becomes a subscribable resource.
-	taskResource := mcp.NewResource(
-		taskURI,
-		fmt.Sprintf("Status of async job: %s (Job ID: %s)", currentItem.Name, jobID),
-		mcp.WithMIMEType("text/plain"),
-	)
-	taskResourceHandler := func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	// Create a dynamic resource for this specific task ID.
+	taskResource := &mcp.Resource{
+		Name:        fmt.Sprintf("Status of async job: %s (Job ID: %s)", currentItem.Name, jobID),
+		URI:         taskURI,
+		MIMEType:    "text/plain",
+		Description: fmt.Sprintf("Status of async job: %s", currentItem.Name),
+	}
+	
+	srv.AddResource(taskResource, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 		log.Printf("Handling standard MCP resource read for task: %s", jobID)
 		task, ok := taskStore.Get(jobID)
 		if !ok {
-			return []mcp.ResourceContents{
-				mcp.TextResourceContents{
-					URI:      taskURI,
-					MIMEType: "text/plain",
-					Text:     "Status: unknown\nMessage: Task ID not found.",
+			return &mcp.ReadResourceResult{
+				Contents: []*mcp.ResourceContents{
+					{
+						URI:      taskURI,
+						MIMEType: "text/plain",
+						Text:     "Status: unknown\nMessage: Task ID not found.",
+					},
 				},
 			}, nil
 		}
 
-		contents := []mcp.ResourceContents{
-			mcp.TextResourceContents{
-				URI:      taskURI,
-				MIMEType: "text/plain",
-				Text:     task.FormatStatus(),
+		return &mcp.ReadResourceResult{
+			Contents: []*mcp.ResourceContents{
+				{
+					URI:      taskURI,
+					MIMEType: "text/plain",
+					Text:     task.FormatStatus(),
+				},
 			},
-		}
-		return contents, nil
-	}
-
-	srv.AddResource(taskResource, taskResourceHandler)
+		}, nil
+	})
 
 	go func() {
 		// Ensure this goroutine does not crash the main server.
@@ -628,54 +647,51 @@ func handleAsyncTask(ctx context.Context, currentItem ContextItem, params map[st
 	}()
 
 	log.Printf("Async tool %s started. Task URI: %s", currentItem.Name, taskURI)
-	initialContents := mcp.TextResourceContents{
-		URI:      taskURI,
-		MIMEType: "text/plain",
-		Text:     task.FormatStatus(),
-	}
-	return mcp.NewToolResultResource(taskURI, initialContents), nil
+	
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{
+				Text: task.FormatStatus(),
+			},
+		},
+	}, EmptyOutput{}, nil
 }
 
 // registerResources registers the static or dynamic resources defined in the
 // config file. These are separate from the ephemeral task resources.
-func registerResources(mcpServer *server.MCPServer, cfg *Config, tmpDir string, verbose bool) {
+func registerResources(mcpServer *mcp.Server, cfg *Config, tmpDir string, verbose bool) {
 	for _, item := range cfg.Specification.Resources {
 		currentItem := item
 
-		resource := mcp.NewResource(
-			currentItem.URI,
-			currentItem.Description,
-			mcp.WithResourceDescription(currentItem.Description),
-			mcp.WithMIMEType("text/plain"),
-		)
-
-		var handler server.ResourceHandlerFunc
+		resource := &mcp.Resource{
+			Name:        currentItem.Description, // Name is roughly description or URI?
+			URI:         currentItem.URI,
+			MIMEType:    "text/plain",
+			Description: currentItem.Description,
+		}
 
 		// Combined handler for content, contentFile, and command
-		handler = func(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		mcpServer.AddResource(resource, func(ctx context.Context, request *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 			if verbose {
 				log.Printf("Handling resource read request for: %s", currentItem.URI)
 			}
 
 			content, err := getResourceContent(currentItem, tmpDir, verbose)
 			if err != nil {
-				// This path should not be reached given the current implementation of getResourceContent,
-				// but is included for robustness.
 				log.Printf("ERROR: Unexpected error getting resource content for %s: %v", currentItem.URI, err)
 				content = fmt.Sprintf("Unexpected error getting resource content for %s: %v", currentItem.URI, err)
 			}
 
-			contents := []mcp.ResourceContents{
-				mcp.TextResourceContents{
-					URI:      currentItem.URI,
-					MIMEType: "text/plain",
-					Text:     content,
+			return &mcp.ReadResourceResult{
+				Contents: []*mcp.ResourceContents{
+					{
+						URI:      currentItem.URI,
+						MIMEType: "text/plain",
+						Text:     content,
+					},
 				},
-			}
-			return contents, nil
-		}
+			}, nil
+		})
 		log.Printf("Registered resource: %s (dynamic: %v)", currentItem.URI, currentItem.Command != "")
-
-		mcpServer.AddResource(resource, handler)
 	}
 }
