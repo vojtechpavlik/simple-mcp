@@ -63,7 +63,7 @@ spec:
       description: "Working example of a single-node RKE2/Kubernetes Unified Core configuration. Single node provides working Kubernetes, but no high availability."
       directory: "elemental-example/single-node/"
 
-    - uri: "elemental://config/single-node/"
+    - uri: "elemental://config/multi-node/"
       description: "Working example of a multi-node RKE2/Kubernetes Unified Core configuration. Multi node provides working Kubernetes, and high availability."
       directory: "elemental-example/multi-node/"
 
