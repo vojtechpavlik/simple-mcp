@@ -178,14 +178,14 @@ func checkTmpDir(path string) error {
 // Input structs for builtin tools
 type ListPendingTasksRequest struct{}
 type TaskStatusRequest struct {
-	TaskID string `json:"taskID" jsonschema:"required,description=The Task ID (e.g. task-...) or full Task URI (e.g. simple-mcp://tasks/...)"`
+	TaskID string `json:"taskID" jsonschema:"The Task ID (e.g. task-...) or full Task URI (e.g. simple-mcp://tasks/...)"`
 }
 type ListResourcesToolRequest struct{}
 type GetResourceToolRequest struct {
-	ResourceURI string `json:"resourceURI" jsonschema:"required,description=The full URI of the resource (e.g. simple-mcp://system/uptime)."`
+	ResourceURI string `json:"resourceURI" jsonschema:"The full URI of the resource (e.g. simple-mcp://system/uptime)."`
 }
 type SearchResourcesRequest struct {
-	Query string `json:"query" jsonschema:"required,description=The regular expression to search for."`
+	Query string `json:"query" jsonschema:"The regular expression to search for."`
 }
 
 // registerBuiltinTools adds the core infrastructure tools required for
@@ -594,7 +594,7 @@ func handleAsyncTask(ctx context.Context, srv *mcp.Server, currentItem ContextIt
 		MIMEType:    "text/plain",
 		Description: fmt.Sprintf("Status of async job: %s", currentItem.Name),
 	}
-	
+
 	srv.AddResource(taskResource, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 		log.Printf("Handling standard MCP resource read for task: %s", jobID)
 		task, ok := taskStore.Get(jobID)
@@ -647,7 +647,7 @@ func handleAsyncTask(ctx context.Context, srv *mcp.Server, currentItem ContextIt
 	}()
 
 	log.Printf("Async tool %s started. Task URI: %s", currentItem.Name, taskURI)
-	
+
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			&mcp.TextContent{

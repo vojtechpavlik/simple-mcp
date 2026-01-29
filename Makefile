@@ -4,7 +4,7 @@ GO=go
 LDFLAGS=-ldflags="-w -s"
 BUILD_ENV=CGO_ENABLED=0 GOOS=linux GOARCH=amd64
 
-.PHONY: all build clean lint-docs
+.PHONY: all build clean lint-docs test
 
 all: build
 
@@ -25,3 +25,6 @@ lint-docs:
 	@mandoc -Tlint simple-mcp-cli.1
 	@echo "Linting README and other documentation..."
 	@markdownlint-cli2 README.md llm-config-generation/README.md llm-config-generation/system_prompt_mcp_architect.md
+
+test:
+	$(GO) test ./...
