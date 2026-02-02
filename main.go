@@ -53,26 +53,21 @@ var rootCmd = &cobra.Command{
 		}
 		log.Printf("Configuration loaded successfully from %s", cfgFile)
 
-		if cfg.Specification.ListenAddr != "" {
-			viper.SetDefault("listen-addr", cfg.Specification.ListenAddr)
-		} else {
-			viper.SetDefault("listen-addr", "localhost:8080")
+		// Apply configuration overrides if flags are not explicitly set
+		if !cmd.Flags().Changed("listen-addr") && cfg.Specification.ListenAddr != "" {
+			viper.Set("listen-addr", cfg.Specification.ListenAddr)
 		}
 
-		if cfg.Specification.TmpDir != "" {
-			viper.SetDefault("tmpdir", cfg.Specification.TmpDir)
+		if !cmd.Flags().Changed("tmpdir") && cfg.Specification.TmpDir != "" {
+			viper.Set("tmpdir", cfg.Specification.TmpDir)
 		}
 
-		if cfg.Specification.Verbose != nil {
-			viper.SetDefault("verbose", *cfg.Specification.Verbose)
-		} else {
-			viper.SetDefault("verbose", false)
+		if !cmd.Flags().Changed("verbose") && cfg.Specification.Verbose != nil {
+			viper.Set("verbose", *cfg.Specification.Verbose)
 		}
 
-		if cfg.Specification.MaxAsyncTasks != 0 {
-			viper.SetDefault("max-async-tasks", cfg.Specification.MaxAsyncTasks)
-		} else {
-			viper.SetDefault("max-async-tasks", 20)
+		if !cmd.Flags().Changed("max-async-tasks") && cfg.Specification.MaxAsyncTasks != 0 {
+			viper.Set("max-async-tasks", cfg.Specification.MaxAsyncTasks)
 		}
 
 		finalListenAddr := viper.GetString("listen-addr")
@@ -160,7 +155,7 @@ func init() {
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "./simple-mcp.yaml", "Path to the YAML configuration file.")
 
-	rootCmd.Flags().String("listen-addr", "", "Address to listen on for HTTP requests. (default \"localhost:8080\")")
+	rootCmd.Flags().String("listen-addr", "localhost:8080", "Address to listen on for HTTP requests.")
 	viper.BindPFlag("listen-addr", rootCmd.Flags().Lookup("listen-addr"))
 
 	rootCmd.Flags().String("tmpdir", "", "Path to a directory for scratch space.")
@@ -169,7 +164,7 @@ func init() {
 	rootCmd.Flags().Bool("verbose", false, "Enable verbose logging of MCP protocol messages.")
 	viper.BindPFlag("verbose", rootCmd.Flags().Lookup("verbose"))
 
-	rootCmd.Flags().Int("max-async-tasks", 0, "Maximum number of asynchronous tasks to keep in memory. (default 20)")
+	rootCmd.Flags().Int("max-async-tasks", 20, "Maximum number of asynchronous tasks to keep in memory.")
 	viper.BindPFlag("max-async-tasks", rootCmd.Flags().Lookup("max-async-tasks"))
 
 	viper.AutomaticEnv()

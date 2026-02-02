@@ -7,7 +7,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -15,44 +14,57 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
-func main() {
-	serverAddr := flag.String("server", "localhost:8080", "Address of the simple-mcp server.")
-	flag.Parse()
+var (
+	session *mcp.ClientSession
+	ctx     context.Context
+	cancel  context.CancelFunc
+)
 
-	if len(flag.Args()) == 0 {
-		fmt.Println("Usage: simple-mcp-cli [options] <subcommand> [args]")
-		fmt.Println("Subcommands: list-tools, show-tool, list-resources, show-resource, resource, tool")
-		os.Exit(1)
-	}
+var rootCmd = &cobra.Command{
+	Use:   "simple-mcp-cli",
+	Short: "A CLI for the simple-mcp server",
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		serverAddr := viper.GetString("server")
+		baseURL := fmt.Sprintf("http://%s/mcp", serverAddr)
 
-	baseURL := fmt.Sprintf("http://%s/mcp", *serverAddr)
-	
-	transport := &mcp.SSEClientTransport{
-		Endpoint: baseURL,
-	}
+		transport := &mcp.SSEClientTransport{
+			Endpoint: baseURL,
+		}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+		ctx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
 
-	client := mcp.NewClient(&mcp.Implementation{
-		Name:    "simple-mcp-cli",
-		Version: "1.0.0",
-	}, nil)
+		client := mcp.NewClient(&mcp.Implementation{
+			Name:    "simple-mcp-cli",
+			Version: "1.0.0",
+		}, nil)
 
-	session, err := client.Connect(ctx, transport, nil)
-	if err != nil {
-		log.Fatalf("Failed to connect to server: %v", err)
-	}
-	defer session.Close()
+		var err error
+		session, err = client.Connect(ctx, transport, nil)
+		if err != nil {
+			cancel()
+			return fmt.Errorf("failed to connect to server: %v", err)
+		}
+		log.Printf("Connected to server.")
+		return nil
+	},
+	PersistentPostRun: func(cmd *cobra.Command, args []string) {
+		if session != nil {
+			session.Close()
+		}
+		if cancel != nil {
+			cancel()
+		}
+	},
+}
 
-	log.Printf("Connected to server.")
-
-	subcommand := flag.Arg(0)
-
-	switch subcommand {
-	case "list-tools":
+var listToolsCmd = &cobra.Command{
+	Use:   "list-tools",
+	Short: "List available tools",
+	Run: func(cmd *cobra.Command, args []string) {
 		tools, err := session.ListTools(ctx, nil)
 		if err != nil {
 			log.Fatalf("Failed to list tools: %v", err)
@@ -60,12 +72,15 @@ func main() {
 		for _, tool := range tools.Tools {
 			fmt.Println(tool.Name)
 		}
-	case "show-tool":
-		if len(flag.Args()) < 2 {
-			fmt.Println("Usage: simple-mcp-cli show-tool <tool-name>")
-			os.Exit(1)
-		}
-		toolName := flag.Arg(1)
+	},
+}
+
+var showToolCmd = &cobra.Command{
+	Use:   "show-tool <tool-name>",
+	Short: "Show details of a specific tool",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		toolName := args[0]
 		tools, err := session.ListTools(ctx, nil)
 		if err != nil {
 			log.Fatalf("Failed to list tools: %v", err)
@@ -78,7 +93,13 @@ func main() {
 		}
 		fmt.Printf("Tool not found: %s\n", toolName)
 		os.Exit(1)
-	case "list-resources":
+	},
+}
+
+var listResourcesCmd = &cobra.Command{
+	Use:   "list-resources",
+	Short: "List available resources",
+	Run: func(cmd *cobra.Command, args []string) {
 		resources, err := session.ListResources(ctx, nil)
 		if err != nil {
 			log.Fatalf("Failed to list resources: %v", err)
@@ -86,12 +107,15 @@ func main() {
 		for _, resource := range resources.Resources {
 			fmt.Println(resource.URI)
 		}
-	case "show-resource":
-		if len(flag.Args()) < 2 {
-			fmt.Println("Usage: simple-mcp-cli show-resource <resource-uri>")
-			os.Exit(1)
-		}
-		resourceURI := flag.Arg(1)
+	},
+}
+
+var showResourceCmd = &cobra.Command{
+	Use:   "show-resource <resource-uri>",
+	Short: "Show details of a specific resource",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		resourceURI := args[0]
 		resources, err := session.ListResources(ctx, nil)
 		if err != nil {
 			log.Fatalf("Failed to list resources: %v", err)
@@ -104,12 +128,15 @@ func main() {
 		}
 		fmt.Printf("Resource not found: %s\n", resourceURI)
 		os.Exit(1)
-	case "resource":
-		if len(flag.Args()) < 2 {
-			fmt.Println("Usage: simple-mcp-cli resource <resource-uri>")
-			os.Exit(1)
-		}
-		resourceURI := flag.Arg(1)
+	},
+}
+
+var resourceCmd = &cobra.Command{
+	Use:   "resource <resource-uri>",
+	Short: "Read a specific resource",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		resourceURI := args[0]
 		readResult, err := session.ReadResource(ctx, &mcp.ReadResourceParams{
 			URI: resourceURI,
 		})
@@ -123,19 +150,26 @@ func main() {
 				fmt.Print(string(content.Blob))
 			}
 		}
-	case "tool":
-		if len(flag.Args()) < 2 {
-			fmt.Println("Usage: simple-mcp-cli tool <tool-name> [--<param-name> <param-value>]...")
+	},
+}
+
+var toolCmd = &cobra.Command{
+	Use:                "tool <tool-name> [--param-name param-value]...",
+	Short:              "Call a tool",
+	DisableFlagParsing: true,
+	Run: func(cmd *cobra.Command, args []string) {
+		if len(args) < 1 {
+			cmd.Help()
 			os.Exit(1)
 		}
-		toolName := flag.Arg(1)
-		args := flag.Args()[2:]
+		toolName := args[0]
+		toolArgs := args[1:]
 		params := make(map[string]any)
-		for i := 0; i < len(args); i++ {
-			if strings.HasPrefix(args[i], "--") {
-				paramName := strings.TrimPrefix(args[i], "--")
-				if i+1 < len(args) {
-					params[paramName] = args[i+1]
+		for i := 0; i < len(toolArgs); i++ {
+			if strings.HasPrefix(toolArgs[i], "--") {
+				paramName := strings.TrimPrefix(toolArgs[i], "--")
+				if i+1 < len(toolArgs) {
+					params[paramName] = toolArgs[i+1]
 					i++
 				} else {
 					log.Fatalf("Missing value for parameter: %s", paramName)
@@ -164,8 +198,24 @@ func main() {
 				}
 			}
 		}
-	default:
-		fmt.Printf("Unknown subcommand: %s\n", subcommand)
+	},
+}
+
+func main() {
+	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
+}
+
+func init() {
+	rootCmd.PersistentFlags().String("server", "localhost:8080", "Address of the simple-mcp server.")
+	viper.BindPFlag("server", rootCmd.PersistentFlags().Lookup("server"))
+	viper.AutomaticEnv()
+
+	rootCmd.AddCommand(listToolsCmd)
+	rootCmd.AddCommand(showToolCmd)
+	rootCmd.AddCommand(listResourcesCmd)
+	rootCmd.AddCommand(showResourceCmd)
+	rootCmd.AddCommand(resourceCmd)
+	rootCmd.AddCommand(toolCmd)
 }
