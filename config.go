@@ -92,6 +92,7 @@ type Spec struct {
 	TmpDir        string         `yaml:"tmpDir,omitempty"`
 	Verbose       *bool          `yaml:"verbose,omitempty"`
 	MaxAsyncTasks int            `yaml:"maxAsyncTasks,omitempty"`
+	Transport     string         `yaml:"transport,omitempty"`
 }
 
 // Config represents the top-level structure of the simple-mcp.yaml file.

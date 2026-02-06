@@ -22,45 +22,45 @@ import (
 
 // Input structs for scratch tools
 type CreateFileRequest struct {
-	Path    string `json:"path" jsonschema:"required,description=The path to the file within the scratch space."`
-	Content string `json:"content" jsonschema:"required,description=The content of the file. Do not forget to include a newline character on the last line of a text file."`
+	Path    string `json:"path" jsonschema:"The path to the file within the scratch space."`
+	Content string `json:"content" jsonschema:"The content of the file. Do not forget to include a newline character on the last line of a text file."`
 }
 
 type ReadFileRequest struct {
-	Path string `json:"path" jsonschema:"required,description=The path to the file within the scratch space."`
+	Path string `json:"path" jsonschema:"The path to the file within the scratch space."`
 }
 
 type DeleteFileRequest struct {
-	Path string `json:"path" jsonschema:"required,description=The path to the file within the scratch space."`
+	Path string `json:"path" jsonschema:"The path to the file within the scratch space."`
 }
 
 type ReplaceInFileRequest struct {
-	Path        string `json:"path" jsonschema:"required,description=The path to the file within the scratch space."`
-	Pattern     string `json:"pattern" jsonschema:"required,description=The regular expression pattern to search for."`
-	Replacement string `json:"replacement" jsonschema:"required,description=The replacement string. Supports capture groups (e.g., $1)."`
+	Path        string `json:"path" jsonschema:"The path to the file within the scratch space."`
+	Pattern     string `json:"pattern" jsonschema:"The regular expression pattern to search for."`
+	Replacement string `json:"replacement" jsonschema:"The replacement string. Supports capture groups (e.g., $1)."`
 	ReplaceAll  bool   `json:"replaceAll,omitempty" jsonschema:"description=If true, replace all occurrences. If false (default), replace only the first occurrence."`
 }
 
 type ListDirectoryRequest struct {
-	Path string `json:"path" jsonschema:"required,description=The path to the directory within the scratch space. Absolute paths are not allowed."`
+	Path string `json:"path" jsonschema:"The path to the directory within the scratch space. Absolute paths are not allowed."`
 }
 
 type CreateDirectoryRequest struct {
-	Path string `json:"path" jsonschema:"required,description=The path to the directory within the scratch space."`
+	Path string `json:"path" jsonschema:"The path to the directory within the scratch space."`
 }
 
 type RemoveDirectoryRequest struct {
-	Path string `json:"path" jsonschema:"required,description=The path to the directory within the scratch space."`
+	Path string `json:"path" jsonschema:"The path to the directory within the scratch space."`
 }
 
 type CopyResourceToFileRequest struct {
-	ResourceURI string `json:"resourceURI" jsonschema:"required,description=The URI of the resource to copy."`
-	Path        string `json:"path" jsonschema:"required,description=The path to the destination file within the scratch space."`
+	ResourceURI string `json:"resourceURI" jsonschema:"The URI of the resource to copy."`
+	Path        string `json:"path" jsonschema:"The path to the destination file within the scratch space."`
 }
 
 type CopyResourceTreeRequest struct {
-	ResourcePrefix  string `json:"resourcePrefix" jsonschema:"required,description=The prefix of the resource URIs to copy."`
-	DestinationPath string `json:"destinationPath" jsonschema:"required,description=The destination directory path within the scratch space."`
+	ResourcePrefix  string `json:"resourcePrefix" jsonschema:"The prefix of the resource URIs to copy."`
+	DestinationPath string `json:"destinationPath" jsonschema:"The destination directory path within the scratch space."`
 }
 
 // EmptyOutput is used when we return the result via *mcp.CallToolResult directly

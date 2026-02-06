@@ -70,10 +70,20 @@ var rootCmd = &cobra.Command{
 			viper.Set("max-async-tasks", cfg.Specification.MaxAsyncTasks)
 		}
 
+		if !cmd.Flags().Changed("transport") && cfg.Specification.Transport != "" {
+			viper.Set("transport", cfg.Specification.Transport)
+		}
+
 		finalListenAddr := viper.GetString("listen-addr")
 		finalTmpDir := viper.GetString("tmpdir")
 		finalVerbose := viper.GetBool("verbose")
 		finalMaxAsyncTasks := viper.GetInt("max-async-tasks")
+		finalTransport := viper.GetString("transport")
+
+		// Validate the transport option
+		if finalTransport != "sse" && finalTransport != "http" && finalTransport != "stdio" {
+			log.Fatalf("ERROR: Invalid transport option '%s'. Must be one of 'sse', 'http', or 'stdio'.", finalTransport)
+		}
 
 		if finalTmpDir != "" {
 			// Verify the directory exists and is writable first.
@@ -166,6 +176,9 @@ func init() {
 
 	rootCmd.Flags().Int("max-async-tasks", 20, "Maximum number of asynchronous tasks to keep in memory.")
 	viper.BindPFlag("max-async-tasks", rootCmd.Flags().Lookup("max-async-tasks"))
+
+	rootCmd.Flags().StringP("transport", "t", "sse", "Transport method for MCP (sse, http, stdio).")
+	viper.BindPFlag("transport", rootCmd.Flags().Lookup("transport"))
 
 	viper.AutomaticEnv()
 	viper.SetEnvPrefix("SIMPLE_MCP")
