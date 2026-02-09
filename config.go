@@ -69,6 +69,7 @@ type ContextItem struct {
 	TimeoutSeconds int           `yaml:"timeoutSeconds,omitempty"`
 	Parameters     ParameterList `yaml:"parameters,omitempty"`
 	Async          bool          `yaml:"async,omitempty"`
+	EnvVars        []string      `yaml:"envVars,omitempty"`
 }
 
 // ResourceItem defines a system resource exposed via the MCP Resources capability.
@@ -85,9 +86,9 @@ type ResourceItem struct {
 
 // Spec defines the schema for the configuration file.
 type Spec struct {
-	LegacyItems []ContextItem  `yaml:"contextItems,omitempty"`
-	Tools       []ContextItem  `yaml:"tools,omitempty"`
-	Resources   []ResourceItem `yaml:"resources"`
+	LegacyItems   []ContextItem  `yaml:"contextItems,omitempty"`
+	Tools         []ContextItem  `yaml:"tools,omitempty"`
+	Resources     []ResourceItem `yaml:"resources"`
 	ListenAddr    string         `yaml:"listenAddr,omitempty"`
 	TmpDir        string         `yaml:"tmpDir,omitempty"`
 	Verbose       *bool          `yaml:"verbose,omitempty"`

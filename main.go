@@ -114,9 +114,7 @@ var rootCmd = &cobra.Command{
 			resourceMap[item.URI] = item
 		}
 		log.Printf("Cached %d resource definitions.", len(resourceMap))
-
-		// Define the SSE handler
-		sseHandler := mcp.NewSSEHandler(func(req *http.Request) *mcp.Server {
+		if finalTransport == "stdio" {
 			s := mcp.NewServer(&mcp.Implementation{
 				Name:    cfg.Metadata.Name,
 				Version: cfg.APIVersion,
@@ -131,25 +129,78 @@ var rootCmd = &cobra.Command{
 					},
 				},
 			})
-
 			registerBuiltinTools(s, taskStore, resourceMap, finalTmpDir, finalVerbose)
 			registerConfigTools(s, cfg, taskStore, finalTmpDir, finalVerbose)
 			registerResources(s, cfg, finalTmpDir, finalVerbose)
-
 			if finalTmpDir != "" {
 				registerScratchTools(s, resourceMap, finalTmpDir, finalVerbose)
 			}
+			log.Printf("MCP server starting on stdio...")
+			if err := s.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
+				log.Fatalf("ERROR: Server error: %v", err)
+			}
+		} else if finalTransport == "sse" || finalTransport == "http" {
+			var httpHandler http.Handler
+			// Define the SSE handler
+			if finalTransport == "sse" {
+				httpHandler = mcp.NewSSEHandler(func(req *http.Request) *mcp.Server {
+					s := mcp.NewServer(&mcp.Implementation{
+						Name:    cfg.Metadata.Name,
+						Version: cfg.APIVersion,
+					}, &mcp.ServerOptions{
+						Capabilities: &mcp.ServerCapabilities{
+							Resources: &mcp.ResourceCapabilities{
+								Subscribe:   true,
+								ListChanged: true,
+							},
+							Tools: &mcp.ToolCapabilities{
+								ListChanged: true,
+							},
+						},
+					})
+					registerBuiltinTools(s, taskStore, resourceMap, finalTmpDir, finalVerbose)
+					registerConfigTools(s, cfg, taskStore, finalTmpDir, finalVerbose)
+					registerResources(s, cfg, finalTmpDir, finalVerbose)
+					if finalTmpDir != "" {
+						registerScratchTools(s, resourceMap, finalTmpDir, finalVerbose)
+					}
+					return s
+				}, nil)
+			} else if finalTransport == "http" {
+				httpHandler = mcp.NewStreamableHTTPHandler(func(req *http.Request) *mcp.Server {
+					s := mcp.NewServer(&mcp.Implementation{
+						Name:    cfg.Metadata.Name,
+						Version: cfg.APIVersion,
+					}, &mcp.ServerOptions{
+						Capabilities: &mcp.ServerCapabilities{
+							Resources: &mcp.ResourceCapabilities{
+								Subscribe:   true,
+								ListChanged: true,
+							},
+							Tools: &mcp.ToolCapabilities{
+								ListChanged: true,
+							},
+						},
+					})
+					registerBuiltinTools(s, taskStore, resourceMap, finalTmpDir, finalVerbose)
+					registerConfigTools(s, cfg, taskStore, finalTmpDir, finalVerbose)
+					registerResources(s, cfg, finalTmpDir, finalVerbose)
+					if finalTmpDir != "" {
+						registerScratchTools(s, resourceMap, finalTmpDir, finalVerbose)
+					}
+					return s
+				}, nil)
+			}
+			log.Printf("MCP server starting, listening on %s/mcp ...", finalListenAddr)
+			http.Handle("/mcp", httpHandler)
+			// Also handle /mcp/ for flexibility
+			http.Handle("/mcp/", httpHandler)
 
-			return s
-		}, nil)
-
-		log.Printf("MCP server starting, listening on %s/mcp ...", finalListenAddr)
-		http.Handle("/mcp", sseHandler)
-		// Also handle /mcp/ for flexibility
-		http.Handle("/mcp/", sseHandler)
-
-		if err := http.ListenAndServe(finalListenAddr, nil); err != nil {
-			log.Fatalf("ERROR: Could not start HTTP server: %v", err)
+			if err := http.ListenAndServe(finalListenAddr, nil); err != nil {
+				log.Fatalf("ERROR: Could not start HTTP server: %v", err)
+			}
+		} else {
+			log.Fatalf("no valid transport")
 		}
 	},
 }
@@ -370,18 +421,18 @@ func getResourceContent(item ResourceItem, tmpDir string, verbose bool) (string,
 	// Then, append command output if a command is defined
 	if item.Command != "" {
 		cmdItem := ContextItem{Command: item.Command}
-		output, exitCode, duration, err := executeCommand(cmdItem, nil, tmpDir)
+		output, err := executeCommand(cmdItem, nil, tmpDir)
 
 		if err != nil {
-			log.Printf("ERROR: Error executing command for resource %s (Exit Code: %d): %v", item.URI, exitCode, err)
+			log.Printf("ERROR: Error executing command for resource %s (Exit Code: %d): %v", item.URI, output.ReturnCode, err)
 			// Append error to content for visibility to the LLM
-			output = fmt.Sprintf("\nError executing command: %v. Output: %s", err, output)
+			combinedContent.WriteString(fmt.Sprintf("\nError executing command: %v. Output: %s", err, output.Result))
 		} else {
 			if verbose {
-				log.Printf("Successfully executed command for resource %s, output: %d bytes, %d lines, exit code: %d, duration: %s", item.URI, len(output), countLines(output), exitCode, duration)
+				log.Printf("Successfully executed command for resource %s, output: %d bytes, %d lines, exit code: %d, duration: %s", item.URI, len(output.Result), countLines(output.Result), output.ReturnCode, output.Duration)
 			}
+			combinedContent.WriteString(output.Result)
 		}
-		combinedContent.WriteString(output)
 	}
 
 	return combinedContent.String(), nil
@@ -584,15 +635,15 @@ func checkShellSafe(s string) error {
 }
 
 func handleSyncTask(ctx context.Context, currentItem ContextItem, params map[string]interface{}, tmpDir string, verbose bool) (*mcp.CallToolResult, EmptyOutput, error) {
-	output, exitCode, duration, err := executeCommand(currentItem, params, tmpDir)
+	output, err := executeCommand(currentItem, params, tmpDir)
 	if err != nil {
-		log.Printf("ERROR: Error executing command '%s' (Exit Code: %d): %v", currentItem.Name, exitCode, err)
+		log.Printf("ERROR: Error executing command '%s' (Exit Code: %d): %v", currentItem.Name, output.ReturnCode, err)
 		// Return stderr output to the LLM to help with diagnosing the failure.
-		return newErrorResult(fmt.Sprintf("Command failed: %v. Output: %s", err, output)), EmptyOutput{}, nil
+		return newErrorResult(fmt.Sprintf("Command failed: %v. Output: %s", err, output.Result)), EmptyOutput{}, nil
 	}
 
-	log.Printf("Successfully executed tool '%s', output: %d bytes, %d lines, exit code: %d, duration: %s", currentItem.Name, len(output), countLines(output), exitCode, duration)
-	return newTextResult(output), EmptyOutput{}, nil
+	log.Printf("Successfully executed tool '%s', output: %d bytes, %d lines, exit code: %d, duration: %s", currentItem.Name, len(output.Result), countLines(output.Result), output.ReturnCode, output.Duration)
+	return newTextResult(output.Result), EmptyOutput{}, nil
 }
 
 func handleAsyncTask(ctx context.Context, srv *mcp.Server, currentItem ContextItem, params map[string]interface{}, taskStore *TaskStore, tmpDir string, verbose bool) (*mcp.CallToolResult, EmptyOutput, error) {
@@ -666,15 +717,15 @@ func handleAsyncTask(ctx context.Context, srv *mcp.Server, currentItem ContextIt
 		log.Printf("Starting async job %s: %s", jobID, currentItem.Name)
 		taskStore.SetStatus(jobID, "running", "Job is executing...")
 
-		output, exitCode, duration, err := executeCommand(currentItem, params, tmpDir)
+		output, err := executeCommand(currentItem, params, tmpDir)
 
 		if err != nil {
-			log.Printf("ERROR: Async job %s finished with status: failed (Exit Code: %d)", jobID, exitCode)
+			log.Printf("ERROR: Async job %s finished with status: failed (Exit Code: %d)", jobID, output.ReturnCode)
 			errMsg := fmt.Sprintf("%v. Output: %s", err, output)
 			taskStore.SetStatus(jobID, "failed", errMsg)
 		} else {
-			log.Printf("Async job %s finished with status: completed, output: %d bytes, %d lines, exit code: %d, duration: %s", jobID, len(output), countLines(output), exitCode, duration)
-			taskStore.SetStatus(jobID, "completed", output)
+			log.Printf("Async job %s finished with status: completed, output: %d bytes, %d lines, exit code: %d, duration: %s", jobID, len(output.Result), countLines(output.Result), output.ReturnCode, output.Duration)
+			taskStore.SetStatus(jobID, "completed", output.Result)
 		}
 	}()
 
