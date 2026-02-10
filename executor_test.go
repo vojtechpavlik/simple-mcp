@@ -270,3 +270,30 @@ func TestExecuteCommand_FileScriptWithShebangArgs(t *testing.T) {
 		t.Errorf("expected 'Hello Shebang', got '%s'", res.Result)
 	}
 }
+
+func TestExecuteCommand_IgnoreExitCodes(t *testing.T) {
+	itemIgnored := ContextItem{
+		Name:            "Exit1",
+		Command:         "exit 1",
+		IgnoreExitCodes: []int{1},
+	}
+
+	res, err := executeCommand(itemIgnored, nil, "")
+	if err != nil {
+		t.Errorf("expected nil error for ignored exit code, got %v", err)
+	}
+
+	if res.ReturnCode != 1 {
+		t.Errorf("expected return code 1, got %d", res.ReturnCode)
+	}
+
+	itemNotIgnored := ContextItem{
+		Name:            "Exit2",
+		Command:         "exit 2",
+		IgnoreExitCodes: []int{1},
+	}
+	_, err = executeCommand(itemNotIgnored, nil, "")
+	if err == nil {
+		t.Error("expected error for non-ignored exit code 2, got nil")
+	}
+}

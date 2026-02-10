@@ -203,11 +203,21 @@ func executeCommand(item ContextItem, params map[string]interface{}, workDir str
 			}
 		}
 		if exitCode != 0 {
-			return toolResult{
-				Duration:   time.Since(startTime),
-				ReturnCode: exitCode,
-				Result:     outputBuf.String(),
-			}, fmt.Errorf("command failed: %w", err)
+			ignored := false
+			for _, code := range item.IgnoreExitCodes {
+				if code == exitCode {
+					ignored = true
+					break
+				}
+			}
+
+			if !ignored {
+				return toolResult{
+					Duration:   time.Since(startTime),
+					ReturnCode: exitCode,
+					Result:     outputBuf.String(),
+				}, fmt.Errorf("command failed: %w", err)
+			}
 		}
 		return toolResult{
 			Duration:   time.Since(startTime),

@@ -14,8 +14,8 @@ func TestExecuteCommand_FileScript_Template(t *testing.T) {
 	}
 	defer os.Remove(f.Name())
 
-	// Python script to verify shebang and templating
-	scriptContent := "#!/usr/bin/env python3\nimport os\nprint('Hello {{.name}} from Python')"
+	// Shell script to verify shebang and templating
+	scriptContent := "#!/bin/sh\necho \"Hello {{.name}} from Shell\""
 	if _, err := f.WriteString(scriptContent); err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestExecuteCommand_FileScript_Template(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	expected := "Hello Goose from Python"
+	expected := "Hello Goose from Shell"
 	if strings.TrimSpace(res.Result) != expected {
 		t.Errorf("expected '%s', got '%s'", expected, res.Result)
 	}

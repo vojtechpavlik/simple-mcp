@@ -70,8 +70,9 @@ type ContextItem struct {
 	Footer         string        `yaml:"fooer,omitempty"`
 	TimeoutSeconds int           `yaml:"timeoutSeconds,omitempty"`
 	Parameters     ParameterList `yaml:"parameters,omitempty"`
-	Async          bool          `yaml:"async,omitempty"`
-	EnvVars        []string      `yaml:"envVars,omitempty"`
+	Async           bool          `yaml:"async,omitempty"`
+	EnvVars         []string      `yaml:"envVars,omitempty"`
+	IgnoreExitCodes []int         `yaml:"ignoreExitCodes,omitempty"`
 }
 
 // ResourceItem defines a system resource exposed via the MCP Resources capability.
