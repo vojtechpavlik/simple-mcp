@@ -8,7 +8,7 @@
 // Package main provides the command execution logic for the server.
 // It handles secure template rendering of commands and their execution with
 // strictly enforced timeouts.
-package main
+package executor
 
 import (
 	"bytes"
@@ -20,18 +20,20 @@ import (
 	"syscall"
 	"text/template"
 	"time"
+
+	"github.com/SUSE/simple-mcp/internal/config"
 )
 
-type toolResult struct {
+type ToolResult struct {
 	Result     string
 	Duration   time.Duration
 	ReturnCode int
 }
 
-// executeCommand renders the command template with the provided parameters
+// ExecuteCommand renders the command template with the provided parameters
 // and executes it in a shell. It returns the combined stdout/stderr,
 // the exit code, and any Go-level error that occurred.
-func executeCommand(item ContextItem, params map[string]interface{}, workDir string) (toolResult, error) {
+func ExecuteCommand(item config.ContextItem, params map[string]interface{}, workDir string) (ToolResult, error) {
 	startTime := time.Now()
 
 	// We separate code from data by passing parameters as environment variables.
@@ -101,13 +103,13 @@ func executeCommand(item ContextItem, params map[string]interface{}, workDir str
 	// Parse the command template
 	tmpl, err := template.New("command").Parse(templateText)
 	if err != nil {
-		return toolResult{}, fmt.Errorf("invalid command template in config: %w", err)
+		return ToolResult{}, fmt.Errorf("invalid command template in config: %w", err)
 	}
 
 	// Render the command string using the variable references
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, templateData); err != nil {
-		return toolResult{}, fmt.Errorf("failed to build command from template: %w", err)
+		return ToolResult{}, fmt.Errorf("failed to build command from template: %w", err)
 	}
 	finalCommand := buf.String()
 
@@ -125,19 +127,19 @@ func executeCommand(item ContextItem, params map[string]interface{}, workDir str
 	if isScriptFile && hasShebang {
 		tmpFile, err := os.CreateTemp("", "mcp-script-*")
 		if err != nil {
-			return toolResult{}, fmt.Errorf("failed to create temp file: %w", err)
+			return ToolResult{}, fmt.Errorf("failed to create temp file: %w", err)
 		}
 		tempPath := tmpFile.Name()
 		defer os.Remove(tempPath)
 
 		if _, err := tmpFile.WriteString(finalCommand); err != nil {
 			tmpFile.Close()
-			return toolResult{}, fmt.Errorf("failed to write temp file: %w", err)
+			return ToolResult{}, fmt.Errorf("failed to write temp file: %w", err)
 		}
 		tmpFile.Close()
 
 		if err := os.Chmod(tempPath, 0755); err != nil {
-			return toolResult{}, fmt.Errorf("failed to chmod temp file: %w", err)
+			return ToolResult{}, fmt.Errorf("failed to chmod temp file: %w", err)
 		}
 		cmd = exec.Command(tempPath)
 	} else {
@@ -169,7 +171,7 @@ func executeCommand(item ContextItem, params map[string]interface{}, workDir str
 
 	// Start the command
 	if err := cmd.Start(); err != nil {
-		return toolResult{}, fmt.Errorf("failed to start command: %w", err)
+		return ToolResult{}, fmt.Errorf("failed to start command: %w", err)
 	}
 
 	// Create a channel to signal command completion
@@ -187,7 +189,7 @@ func executeCommand(item ContextItem, params map[string]interface{}, workDir str
 		// We ignore errors here because the process might already be gone.
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 
-		return toolResult{
+		return ToolResult{
 			Duration:   time.Since(startTime),
 			ReturnCode: -1,
 		}, fmt.Errorf("command timed out after %d seconds", item.TimeoutSeconds)
@@ -212,14 +214,14 @@ func executeCommand(item ContextItem, params map[string]interface{}, workDir str
 			}
 
 			if !ignored {
-				return toolResult{
+				return ToolResult{
 					Duration:   time.Since(startTime),
 					ReturnCode: exitCode,
 					Result:     outputBuf.String(),
 				}, fmt.Errorf("command failed: %w", err)
 			}
 		}
-		return toolResult{
+		return ToolResult{
 			Duration:   time.Since(startTime),
 			ReturnCode: exitCode,
 			Result:     strings.TrimSpace(outputBuf.String()),

@@ -1,9 +1,11 @@
-package main
+package executor
 
 import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/SUSE/simple-mcp/internal/config"
 )
 
 func TestExecuteCommand_FileScript_Template(t *testing.T) {
@@ -25,7 +27,7 @@ func TestExecuteCommand_FileScript_Template(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	item := ContextItem{
+	item := config.ContextItem{
 		Name:    "FileScriptTemplate",
 		Command: f.Name(),
 	}
@@ -34,7 +36,7 @@ func TestExecuteCommand_FileScript_Template(t *testing.T) {
 		"name": "Goose",
 	}
 
-	res, err := executeCommand(item, params, "")
+	res, err := ExecuteCommand(item, params, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -63,7 +65,7 @@ func TestExecuteCommand_FileScript_ComplexTemplate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	item := ContextItem{
+	item := config.ContextItem{
 		Name:    "FileScriptComplex",
 		Command: f.Name(),
 	}
@@ -72,7 +74,7 @@ func TestExecuteCommand_FileScript_ComplexTemplate(t *testing.T) {
 	paramsTrue := map[string]interface{}{
 		"condition": "true",
 	}
-	res, err := executeCommand(item, paramsTrue, "")
+	res, err := ExecuteCommand(item, paramsTrue, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -84,7 +86,7 @@ func TestExecuteCommand_FileScript_ComplexTemplate(t *testing.T) {
 	paramsFalse := map[string]interface{}{
 		"condition": "false",
 	}
-	res, err = executeCommand(item, paramsFalse, "")
+	res, err = ExecuteCommand(item, paramsFalse, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -8,7 +8,7 @@
 // Package main provides the configuration structures and parsing logic for the
 // Unified Core MCP server. It handles reading the simple-mcp.yaml file which defines
 // the static resources and executable tools exposed to the LLM.
-package main
+package config
 
 import (
 	"bytes"

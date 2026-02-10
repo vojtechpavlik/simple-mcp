@@ -5,7 +5,7 @@
 // This software is released under the MIT License.
 // https://opensource.org/licenses/MIT
 
-package main
+package scratch
 
 import (
 	"os"
@@ -15,6 +15,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/SUSE/simple-mcp/internal/config"
+	"github.com/SUSE/simple-mcp/internal/shared"
 )
 
 func TestScratchLogic(t *testing.T) {
@@ -49,7 +52,7 @@ func TestScratchLogic(t *testing.T) {
 	})
 
 	t.Run("CopyResourceToFile", func(t *testing.T) {
-		resourceMap := map[string]ResourceItem{
+		resourceMap := map[string]config.ResourceItem{
 			"simple-mcp://content": {
 				URI:     "simple-mcp://content",
 				Content: "resource content",
@@ -76,7 +79,7 @@ func TestScratchLogic(t *testing.T) {
 	})
 
 	t.Run("CopyResourceToFile_Combined", func(t *testing.T) {
-		resourceMap := map[string]ResourceItem{
+		resourceMap := map[string]config.ResourceItem{
 			"simple-mcp://combined": {
 				URI:     "simple-mcp://combined",
 				Content: "static content\n",
@@ -93,7 +96,7 @@ func TestScratchLogic(t *testing.T) {
 	})
 
 	t.Run("CopyResourceTree", func(t *testing.T) {
-		resourceMap := map[string]ResourceItem{
+		resourceMap := map[string]config.ResourceItem{
 			"prefix://a/file1.txt": {URI: "prefix://a/file1.txt", Content: "content1"},
 			"prefix://a/b/file2.txt": {URI: "prefix://a/b/file2.txt", Content: "content2"},
 			"prefix://other/file3.txt": {URI: "prefix://other/file3.txt", Content: "content3"},
@@ -120,7 +123,7 @@ func TestScratchLogic(t *testing.T) {
 			// The order is random in map iteration.
 			// Let's use a cleaner example where they don't overlap as file/dir.
 
-			resourceMapClean := map[string]ResourceItem{
+			resourceMapClean := map[string]config.ResourceItem{
 				"prefix://a/file1.txt": {URI: "prefix://a/file1.txt", Content: "content1"},
 				"prefix://a/b/file2.txt": {URI: "prefix://a/b/file2.txt", Content: "content2"},
 			}
@@ -143,7 +146,7 @@ func TestScratchLogic(t *testing.T) {
 
 		t.Run("PartialMatchSecurity", func(t *testing.T) {
 			// prefix://a should NOT match prefix://ab/file.txt
-			resourceMapPartial := map[string]ResourceItem{
+			resourceMapPartial := map[string]config.ResourceItem{
 				"prefix://ab/file.txt": {URI: "prefix://ab/file.txt", Content: "content"},
 			}
 			res, err := copyResourceTree(resourceMapPartial, tmpDir, false, "prefix://a", "tree-partial")
@@ -155,7 +158,7 @@ func TestScratchLogic(t *testing.T) {
 			_, err := createFile(tmpDir, "tree-overwrite/file1.txt", "old content")
 			require.NoError(t, err)
 
-			resourceMapOverwrite := map[string]ResourceItem{
+			resourceMapOverwrite := map[string]config.ResourceItem{
 				"prefix://a/file1.txt": {URI: "prefix://a/file1.txt", Content: "new content"},
 			}
 			res, err := copyResourceTree(resourceMapOverwrite, tmpDir, false, "prefix://a/", "tree-overwrite")
@@ -271,7 +274,7 @@ func TestScratchLogic(t *testing.T) {
 		}
 		for _, path := range paths {
 			t.Run(path, func(t *testing.T) {
-				_, err := resolvePath(tmpDir, path)
+				_, err := shared.ResolvePath(tmpDir, path)
 				assert.Error(t, err)
 			})
 		}

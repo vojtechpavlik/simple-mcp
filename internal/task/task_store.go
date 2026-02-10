@@ -8,7 +8,7 @@
 // Package main provides state management for long-running asynchronous tasks.
 // It allows the MCP server to track the status of operations like system upgrades
 // or reboots, which exceed the typical timeout for synchronous tool calls.
-package main
+package task
 
 import (
 	"fmt"

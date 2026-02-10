@@ -6,10 +6,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/SUSE/simple-mcp/internal/config"
 )
 
 func TestSearchResources(t *testing.T) {
-	resourceMap := map[string]ResourceItem{
+	resourceMap := map[string]config.ResourceItem{
 		"test://apple": {
 			URI:         "test://apple",
 			Description: "A red fruit",
@@ -167,91 +169,91 @@ func TestValidateParameter(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		param   Parameter
+		param   config.Parameter
 		value   string
 		valid   bool
 		wantErr string
 	}{
 		{
 			name:  "Integer Valid",
-			param: Parameter{Name: "p", Type: "integer"},
+			param: config.Parameter{Name: "p", Type: "integer"},
 			value: "123",
 			valid: true,
 		},
 		{
 			name:    "Integer Invalid",
-			param:   Parameter{Name: "p", Type: "integer"},
+			param:   config.Parameter{Name: "p", Type: "integer"},
 			value:   "abc",
 			valid:   false,
 			wantErr: "must be a valid integer",
 		},
 		{
 			name:  "Number Valid",
-			param: Parameter{Name: "p", Type: "number"},
+			param: config.Parameter{Name: "p", Type: "number"},
 			value: "12.34",
 			valid: true,
 		},
 		{
 			name:  "Word Valid",
-			param: Parameter{Name: "p", Type: "word"},
+			param: config.Parameter{Name: "p", Type: "word"},
 			value: "HelloWorld123",
 			valid: true,
 		},
 		{
 			name:    "Word Invalid",
-			param:   Parameter{Name: "p", Type: "word"},
+			param:   config.Parameter{Name: "p", Type: "word"},
 			value:   "Hello World",
 			valid:   false,
 			wantErr: "must be an alphanumeric word without spaces",
 		},
 		{
 			name:  "Filename Valid",
-			param: Parameter{Name: "p", Type: "filename"},
+			param: config.Parameter{Name: "p", Type: "filename"},
 			value: "my_file.txt",
 			valid: true,
 		},
 		{
 			name:    "Filename Invalid (path separator)",
-			param:   Parameter{Name: "p", Type: "filename"},
+			param:   config.Parameter{Name: "p", Type: "filename"},
 			value:   "dir/file.txt",
 			valid:   false,
 			wantErr: "must not contain path separators",
 		},
 		{
 			name:  "Regexp Valid",
-			param: Parameter{Name: "p", Validator: "^[a-z]+$"},
+			param: config.Parameter{Name: "p", Validator: "^[a-z]+$"},
 			value: "abc",
 			valid: true,
 		},
 		{
 			name:    "Regexp Invalid",
-			param:   Parameter{Name: "p", Validator: "^[a-z]+$"},
+			param:   config.Parameter{Name: "p", Validator: "^[a-z]+$"},
 			value:   "123",
 			valid:   false,
 			wantErr: "failed regexp check",
 		},
 		{
 			name:  "tmpFile Valid",
-			param: Parameter{Name: "p", Type: "tmpFile"},
+			param: config.Parameter{Name: "p", Type: "tmpFile"},
 			value: "myfile.txt",
 			valid: true,
 		},
 		{
 			name:    "tmpFile Invalid (is dir)",
-			param:   Parameter{Name: "p", Type: "tmpFile"},
+			param:   config.Parameter{Name: "p", Type: "tmpFile"},
 			value:   "mysubdir",
 			valid:   false,
 			wantErr: "path is a directory in scratch space",
 		},
 		{
 			name:  "tmpDir Valid",
-			param: Parameter{Name: "p", Type: "tmpDir"},
+			param: config.Parameter{Name: "p", Type: "tmpDir"},
 			value: "mysubdir",
 			valid: true,
 		},
 		{
 			name:    "tmpDir Invalid (security)",
-			param:   Parameter{Name: "p", Type: "tmpDir"},
+			param:   config.Parameter{Name: "p", Type: "tmpDir"},
 			value:   "../",
 			valid:   false,
 			wantErr: "path must not contain '..'",

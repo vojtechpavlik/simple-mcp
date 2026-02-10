@@ -20,7 +20,7 @@ func TestManPages(t *testing.T) {
 		}
 	}
 
-	manpages := []string{"simple-mcp.1", "simple-mcp-cli.1"}
+	manpages := []string{"../../simple-mcp.1", "../../simple-mcp-cli.1"}
 	for _, mp := range manpages {
 		cmd := exec.Command("mandoc", "-Tlint", mp)
 		output, err := cmd.CombinedOutput()
@@ -38,7 +38,7 @@ func TestMarkdown(t *testing.T) {
 		}
 	}
 
-	cmd := exec.Command("markdownlint-cli2", "README.md", "llm-config-generation/README.md", "llm-config-generation/system_prompt_mcp_architect.md")
+	cmd := exec.Command("markdownlint-cli2", "../../README.md", "../../llm-config-generation/README.md", "../../llm-config-generation/system_prompt_mcp_architect.md")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Errorf("markdownlint failed: %v\nOutput: %s", err, string(output))

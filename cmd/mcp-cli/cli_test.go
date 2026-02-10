@@ -16,7 +16,7 @@ func TestListTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get current directory: %v", err)
 	}
-	rootDir := filepath.Dir(dir)
+	rootDir := filepath.Dir(filepath.Dir(dir))
 	t.Logf("start test in: %s", dir)
 	// Build the server and client from the project root
 	buildCmdClean := exec.Command("make", "clean")
