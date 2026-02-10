@@ -58,9 +58,15 @@ The `spec` section also defines:
 * **Tools:** Executable commands exposed to the LLM.
   * `name`: The name of the tool.
   * `description`: What the tool does.
-  * `command`: The shell command to run. Supports Go template syntax
-    (e.g., `{{.paramName}}`).
+  * `command`: The shell command to run. If the path points to an executable
+    file (e.g. a script with a shebang), it is executed directly. Otherwise, it
+    is executed as a shell command (`sh -c`) with `set -o pipefail` enabled by
+    default. Supports Go template syntax (e.g., `{{.paramName}}`).
   * `parameters`: A list of parameter names the tool accepts.
+  * `envVars`: A list of environment variable names to pass from the host.
+    **Note:** Commands now run in a clean environment by default; you must
+    explicitly list any host environment variables needed.
+  * `ignoreExitCodes`: A list of return codes to consider as success.
   * `async`: If true, the tool runs in the background and returns a task URI for
     monitoring.
   * `timeoutSeconds`: Maximum execution time for the command (default: 30s).
