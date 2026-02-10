@@ -66,6 +66,8 @@ type ContextItem struct {
 	Name           string        `yaml:"name"`
 	Description    string        `yaml:"description"`
 	Command        string        `yaml:"command"`
+	Header         string        `yaml:"header,omitempty"`
+	Footer         string        `yaml:"fooer,omitempty"`
 	TimeoutSeconds int           `yaml:"timeoutSeconds,omitempty"`
 	Parameters     ParameterList `yaml:"parameters,omitempty"`
 	Async          bool          `yaml:"async,omitempty"`

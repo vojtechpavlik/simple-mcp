@@ -721,7 +721,7 @@ func handleAsyncTask(ctx context.Context, srv *mcp.Server, currentItem ContextIt
 
 		if err != nil {
 			log.Printf("ERROR: Async job %s finished with status: failed (Exit Code: %d)", jobID, output.ReturnCode)
-			errMsg := fmt.Sprintf("%v. Output: %s", err, output)
+			errMsg := fmt.Sprintf("%v. Output: %s", err, output.Result)
 			taskStore.SetStatus(jobID, "failed", errMsg)
 		} else {
 			log.Printf("Async job %s finished with status: completed, output: %d bytes, %d lines, exit code: %d, duration: %s", jobID, len(output.Result), countLines(output.Result), output.ReturnCode, output.Duration)

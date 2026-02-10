@@ -54,9 +54,52 @@ func executeCommand(item ContextItem, params map[string]interface{}, workDir str
 		envVars = append(envVars, fmt.Sprintf("%s=%s", envVarName, strValue))
 		templateData[key] = "${" + envVarName + "}"
 	}
+	var templateText string
+	interpreter := "sh"
+	interpreterArgs := []string{}
 
+	// check if command is a file
+	isScriptFile := false
+	hasShebang := false
+	if strings.HasPrefix(item.Command, "/") {
+		if info, err := os.Stat(item.Command); err == nil && !info.IsDir() {
+			if content, err := os.ReadFile(item.Command); err == nil {
+				isScriptFile = true
+				templateText = string(content)
+				// Check for shebang
+				firstLine, _, _ := strings.Cut(templateText, "\n")
+				if strings.HasPrefix(firstLine, "#!") {
+					hasShebang = true
+					shebang := strings.TrimSpace(strings.TrimPrefix(firstLine, "#!"))
+					parts := strings.Fields(shebang)
+					if len(parts) > 0 {
+						candidate := parts[0]
+						if _, err := os.Stat(candidate); err == nil {
+							interpreter = candidate
+							interpreterArgs = []string{}
+							if len(parts) > 1 {
+								interpreterArgs = append(interpreterArgs, parts[1:]...)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	if !isScriptFile {
+		interpreterArgs = []string{"-c"}
+		header := "set -o pipefail\n"
+		if item.Header != "" {
+			header = item.Header
+		}
+		footer := ""
+		if item.Footer != "" {
+			footer = item.Footer
+		}
+		templateText = header + item.Command + footer
+	}
 	// Parse the command template
-	tmpl, err := template.New("command").Parse("set -o pipefail\n" + item.Command)
+	tmpl, err := template.New("command").Parse(templateText)
 	if err != nil {
 		return toolResult{}, fmt.Errorf("invalid command template in config: %w", err)
 	}
@@ -78,7 +121,28 @@ func executeCommand(item ContextItem, params map[string]interface{}, workDir str
 	// We use exec.Command (without Context) so we can manually manage the
 	// wait/kill cycle. This prevents 'CombinedOutput' from hanging on
 	// open pipes even after the context is done.
-	cmd := exec.Command("sh", "-c", finalCommand)
+	var cmd *exec.Cmd
+	if isScriptFile && hasShebang {
+		tmpFile, err := os.CreateTemp("", "mcp-script-*")
+		if err != nil {
+			return toolResult{}, fmt.Errorf("failed to create temp file: %w", err)
+		}
+		tempPath := tmpFile.Name()
+		defer os.Remove(tempPath)
+
+		if _, err := tmpFile.WriteString(finalCommand); err != nil {
+			tmpFile.Close()
+			return toolResult{}, fmt.Errorf("failed to write temp file: %w", err)
+		}
+		tmpFile.Close()
+
+		if err := os.Chmod(tempPath, 0755); err != nil {
+			return toolResult{}, fmt.Errorf("failed to chmod temp file: %w", err)
+		}
+		cmd = exec.Command(tempPath)
+	} else {
+		cmd = exec.Command(interpreter, append(interpreterArgs, finalCommand)...)
+	}
 
 	// Assign the process to a new Process Group so we can identify all children.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -148,7 +212,7 @@ func executeCommand(item ContextItem, params map[string]interface{}, workDir str
 		return toolResult{
 			Duration:   time.Since(startTime),
 			ReturnCode: exitCode,
-			Result:     outputBuf.String(),
+			Result:     strings.TrimSpace(outputBuf.String()),
 		}, nil
 	}
 }

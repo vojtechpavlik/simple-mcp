@@ -16,13 +16,13 @@ func TestExecuteCommand_Templating(t *testing.T) {
 		"name": "World",
 	}
 
-	output, _, _, err := executeCommand(item, params, "")
+	res, err := executeCommand(item, params, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if strings.TrimSpace(output) != "Hello World" {
-		t.Errorf("expected 'Hello World', got '%s'", output)
+	if strings.TrimSpace(res.Result) != "Hello World" {
+		t.Errorf("expected 'Hello World', got '%s'", res.Result)
 	}
 }
 
@@ -36,7 +36,7 @@ func TestExecuteCommand_Timeout(t *testing.T) {
 	}
 
 	start := time.Now()
-	_, _, _, err := executeCommand(item, nil, "")
+	_, err := executeCommand(item, nil, "")
 	duration := time.Since(start)
 
 	if err == nil {
@@ -53,7 +53,7 @@ func TestExecuteCommand_InvalidTemplate(t *testing.T) {
 	item := ContextItem{
 		Command: "echo {{.missing_end_brace",
 	}
-	_, _, _, err := executeCommand(item, nil, "")
+	_, err := executeCommand(item, nil, "")
 	if err == nil {
 		t.Error("expected template parse error, got nil")
 	}
@@ -66,23 +66,23 @@ func TestExecuteCommand_WorkingDirectory(t *testing.T) {
 	}
 
 	// Test with a specific directory
-	output, _, _, err := executeCommand(item, nil, "/usr")
+	res, err := executeCommand(item, nil, "/usr")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if strings.TrimSpace(output) != "/usr" {
-		t.Errorf("expected '/usr', got '%s'", output)
+	if strings.TrimSpace(res.Result) != "/usr" {
+		t.Errorf("expected '/usr', got '%s'", res.Result)
 	}
 
 	// Test with the default /tmp directory
-	output, _, _, err = executeCommand(item, nil, "")
+	res, err = executeCommand(item, nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if strings.TrimSpace(output) != "/tmp" {
-		t.Errorf("expected '/tmp', got '%s'", output)
+	if strings.TrimSpace(res.Result) != "/tmp" {
+		t.Errorf("expected '/tmp', got '%s'", res.Result)
 	}
 }
 
@@ -112,7 +112,7 @@ func TestExecuteCommand_SecurityInjection(t *testing.T) {
 			params := map[string]interface{}{
 				"text": tc.input,
 			}
-			_, _, _, _ = executeCommand(item, params, "")
+			_, _ = executeCommand(item, params, "")
 
 			if _, err := os.Stat(tempFile); err == nil {
 				t.Errorf("Security breach: file %s was created using %s injection", tempFile, tc.name)
@@ -137,17 +137,17 @@ func TestExecuteCommand_Quoting(t *testing.T) {
 	}
 
 	// Unquoted: should split into two arguments
-	output, _, _, _ := executeCommand(itemUnquoted, params, "")
-	lines := strings.Split(strings.TrimSpace(output), "\n")
+	res, _ := executeCommand(itemUnquoted, params, "")
+	lines := strings.Split(strings.TrimSpace(res.Result), "\n")
 	if len(lines) != 2 {
-		t.Errorf("expected 2 lines for unquoted space, got %d: %q", len(lines), output)
+		t.Errorf("expected 2 lines for unquoted space, got %d: %q", len(lines), res.Result)
 	}
 
 	// Quoted: should stay as one argument
-	output, _, _, _ = executeCommand(itemQuoted, params, "")
-	lines = strings.Split(strings.TrimSpace(output), "\n")
+	res, _ = executeCommand(itemQuoted, params, "")
+	lines = strings.Split(strings.TrimSpace(res.Result), "\n")
 	if len(lines) != 1 {
-		t.Errorf("expected 1 line for quoted space, got %d: %q", len(lines), output)
+		t.Errorf("expected 1 line for quoted space, got %d: %q", len(lines), res.Result)
 	}
 }
 
@@ -172,15 +172,15 @@ func TestExecuteCommand_Globbing(t *testing.T) {
 	}
 
 	// Unquoted: shell should expand the glob
-	output, _, _, _ := executeCommand(itemUnquoted, params, "")
-	if !strings.Contains(output, dir+"/a") || !strings.Contains(output, dir+"/b") {
-		t.Errorf("expected glob expansion for unquoted, got: %q", output)
+	res, _ := executeCommand(itemUnquoted, params, "")
+	if !strings.Contains(res.Result, dir+"/a") || !strings.Contains(res.Result, dir+"/b") {
+		t.Errorf("expected glob expansion for unquoted, got: %q", res.Result)
 	}
 
 	// Quoted: shell should NOT expand the glob (passing the literal '*' to ls, which should fail or just show the literal name)
-	output, _, _, _ = executeCommand(itemQuoted, params, "")
-	if strings.Contains(output, dir+"/a") && strings.Contains(output, dir+"/b") {
-		t.Errorf("did NOT expect glob expansion for quoted, but got: %q", output)
+	res, _ = executeCommand(itemQuoted, params, "")
+	if strings.Contains(res.Result, dir+"/a") && strings.Contains(res.Result, dir+"/b") {
+		t.Errorf("did NOT expect glob expansion for quoted, but got: %q", res.Result)
 	}
 }
 
@@ -197,17 +197,76 @@ func TestExecuteCommand_Sanitization(t *testing.T) {
 		"bad-name; touch " + tempFile: "safe value",
 	}
 
-	output, _, _, err := executeCommand(item, params, "")
+	res, err := executeCommand(item, params, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if strings.TrimSpace(output) != "safe value" {
-		t.Errorf("expected 'safe value', got %q", output)
+	if strings.TrimSpace(res.Result) != "safe value" {
+		t.Errorf("expected 'safe value', got %q", res.Result)
 	}
 
 	if _, err := os.Stat(tempFile); err == nil {
 		t.Errorf("Security breach: file %s was created using parameter name injection", tempFile)
 		os.Remove(tempFile)
+	}
+}
+
+func TestExecuteCommand_FileScript(t *testing.T) {
+	// Create a temp script
+	f, err := os.CreateTemp("", "script-*.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+
+	scriptContent := "#!/bin/sh\necho Hello File"
+	if _, err := f.WriteString(scriptContent); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+
+	item := ContextItem{
+		Name:    "FileScript",
+		Command: f.Name(),
+	}
+
+	res, err := executeCommand(item, nil, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if strings.TrimSpace(res.Result) != "Hello File" {
+		t.Errorf("expected 'Hello File', got '%s'", res.Result)
+	}
+}
+
+func TestExecuteCommand_FileScriptWithShebangArgs(t *testing.T) {
+	// Create a temp script with a shebang that has arguments
+	// We use /usr/bin/env sh to test the argument parsing logic
+	f, err := os.CreateTemp("", "script-shebang-*.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+
+	scriptContent := "#!/usr/bin/env sh\necho Hello Shebang"
+	if _, err := f.WriteString(scriptContent); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+
+	item := ContextItem{
+		Name:    "FileScriptShebang",
+		Command: f.Name(),
+	}
+
+	res, err := executeCommand(item, nil, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if strings.TrimSpace(res.Result) != "Hello Shebang" {
+		t.Errorf("expected 'Hello Shebang', got '%s'", res.Result)
 	}
 }
