@@ -153,35 +153,49 @@ var rootCmd = &cobra.Command{
 				log.Fatalf("ERROR: Server error: %v", err)
 			}
 		} else if finalTransport == "auto" || finalTransport == "sse" || finalTransport == "http" {
-			var httpHandler http.Handler
+			sseHandler := mcp.NewSSEHandler(serverFactory, nil)
+			streamableHandler := mcp.NewStreamableHTTPHandler(serverFactory, nil)
 
+			// The auto-detecting handler for the generic endpoint (/mcp)
+			multiplexedHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// SSE transport (2024 spec) starts with a GET request expecting text/event-stream
+				// or a POST with a session ID for existing sessions.
+				if (r.Method == http.MethodGet && strings.Contains(r.Header.Get("Accept"), "text/event-stream")) ||
+					(r.Method == http.MethodPost && (r.URL.Query().Get("sessionid") != "" || r.URL.Query().Get("session_id") != "")) {
+					sseHandler.ServeHTTP(w, r)
+					return
+				}
+				// Default to Streamable HTTP (2025 spec) for other requests
+				streamableHandler.ServeHTTP(w, r)
+			})
+
+			var defaultHandler http.Handler
 			if finalTransport == "sse" {
-				httpHandler = mcp.NewSSEHandler(serverFactory, nil)
+				defaultHandler = sseHandler
 			} else if finalTransport == "http" {
-				httpHandler = mcp.NewStreamableHTTPHandler(serverFactory, nil)
-			} else { // auto
-				sseHandler := mcp.NewSSEHandler(serverFactory, nil)
-				streamableHandler := mcp.NewStreamableHTTPHandler(serverFactory, nil)
-				httpHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					// SSE transport starts with a GET request expecting text/event-stream
-					if r.Method == http.MethodGet && strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
-						sseHandler.ServeHTTP(w, r)
-						return
-					}
-					// SSE messages are sent via POST and typically have a sessionid query parameter in mcp-go
-					if r.Method == http.MethodPost && (r.URL.Query().Get("sessionid") != "" || r.URL.Query().Get("session_id") != "") {
-						sseHandler.ServeHTTP(w, r)
-						return
-					}
-					// Default to streamable HTTP for other requests
-					streamableHandler.ServeHTTP(w, r)
-				})
+				defaultHandler = streamableHandler
+			} else {
+				defaultHandler = multiplexedHandler
 			}
 
-			log.Printf("MCP server starting (%s), listening on %s/mcp ...", finalTransport, finalListenAddr)
-			http.Handle("/mcp", httpHandler)
-			// Also handle /mcp/ for flexibility
-			http.Handle("/mcp/", httpHandler)
+			// Register standard endpoints
+			log.Printf("MCP server starting (%s), listening on %s ...", finalTransport, finalListenAddr)
+
+			// 1. Generic endpoint with auto-detection/multiplexing
+			http.Handle("/mcp", defaultHandler)
+			http.Handle("/mcp/", defaultHandler)
+
+			// 2. Dedicated SSE endpoint (2024 spec)
+			http.Handle("/sse", sseHandler)
+			http.Handle("/sse/", sseHandler)
+
+			// 3. Dedicated Streamable HTTP endpoint (2025 spec)
+			http.Handle("/messages", streamableHandler)
+			http.Handle("/messages/", streamableHandler)
+
+			log.Printf("  - Unified/Auto-detect: %s/mcp", finalListenAddr)
+			log.Printf("  - Dedicated SSE:       %s/sse", finalListenAddr)
+			log.Printf("  - Dedicated Streamable:%s/messages", finalListenAddr)
 
 			if err := http.ListenAndServe(finalListenAddr, nil); err != nil {
 				log.Fatalf("ERROR: Could not start HTTP server: %v", err)

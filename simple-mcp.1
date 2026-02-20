@@ -25,7 +25,9 @@ Default: \fI./simple-mcp.yaml\fR (or \fI/etc/simple-mcp/simple-mcp.yaml\fR when
 running as a system service).
 .TP
 .BI \-listen-addr " address"
-The network address and port to listen on for HTTP requests.
+The network address and port to listen on for HTTP requests. The server exposes
+multiple standard MCP endpoints: \fI/mcp\fR (multiplexed), \fI/sse\fR (dedicated
+SSE), and \fI/messages\fR (dedicated Streamable HTTP).
 .br
 Default: \fIlocalhost:8080\fR.
 .TP

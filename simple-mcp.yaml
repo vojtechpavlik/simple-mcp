@@ -3,7 +3,7 @@ kind: DynamicContextSource
 metadata:
   name: simple-mcp
 spec:
-  listenAddr: "localhost:8080"
+  listenAddr: "localhost:8080" # Exposed endpoints: /mcp (multiplexed), /sse (SSE), /messages (Streamable)
   # Adding a scratch space will enable file operations (create, replace content, delete) limited to that directory
   tmpDir: ""
   verbose: false
