@@ -10,11 +10,11 @@ all: build
 
 build: $(SERVER_BINARY) $(CLIENT_BINARY)
 
-$(SERVER_BINARY): main.go config.go executor.go task_store.go scratch.go
-	$(BUILD_ENV) $(GO) build $(LDFLAGS) -o $(SERVER_BINARY) .
+$(SERVER_BINARY): cmd/simple-mcp/main.go
+	$(BUILD_ENV) $(GO) build $(LDFLAGS) -o $(SERVER_BINARY) ./cmd/simple-mcp
 
-$(CLIENT_BINARY): cli/main.go
-	$(BUILD_ENV) $(GO) build $(LDFLAGS) -o $(CLIENT_BINARY) cli/main.go
+$(CLIENT_BINARY): cmd/mcp-cli/main.go
+	$(BUILD_ENV) $(GO) build $(LDFLAGS) -o $(CLIENT_BINARY) ./cmd/mcp-cli
 
 clean:
 	rm -f $(SERVER_BINARY) $(CLIENT_BINARY)
