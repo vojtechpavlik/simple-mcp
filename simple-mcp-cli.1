@@ -12,8 +12,9 @@ to list and invoke tools and resources directly from the command line.
 
 .SH OPTIONS
 .TP
-.BI \-server " address"
-The address of the \fBsimple-mcp\fR server (default: \fIlocalhost:8080\fR).
+.BI \-server " address_or_url"
+The address or full URL of the \fBsimple-mcp\fR server (default:
+\fIlocalhost:8080\fR). If a path is omitted, \fI/mcp\fR is used.
 .TP
 .BI \-transport " type"
 The transport method to use. Options are \fBsse\fR (default), \fBhttp\fR
@@ -61,6 +62,12 @@ simple-mcp-cli resource simple-mcp://system/uptime
 .P
 .RS 4
 simple-mcp-cli tool PackageVersion --package bash
+.RE
+.P
+.B Connect to a specific endpoint:
+.P
+.RS 4
+simple-mcp-cli --server http://localhost:8080/sse list-tools
 .RE
 .P
 .B Use stdio transport with simple-mcp:

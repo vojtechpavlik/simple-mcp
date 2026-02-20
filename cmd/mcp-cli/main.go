@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -31,7 +32,23 @@ var rootCmd = &cobra.Command{
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		transportType := viper.GetString("transport")
 		serverAddr := viper.GetString("server")
-		baseURL := fmt.Sprintf("http://%s/mcp", serverAddr)
+
+		// If the address doesn't contain a scheme, assume http://
+		if !strings.Contains(serverAddr, "://") {
+			serverAddr = "http://" + serverAddr
+		}
+
+		u, err := url.Parse(serverAddr)
+		if err != nil {
+			return fmt.Errorf("invalid server address: %v", err)
+		}
+
+		// If no path is provided, default to /mcp
+		if u.Path == "" || u.Path == "/" {
+			u.Path = "/mcp"
+		}
+
+		baseURL := u.String()
 
 		var transport mcp.Transport
 		switch transportType {
@@ -64,7 +81,6 @@ var rootCmd = &cobra.Command{
 			Version: "1.0.0",
 		}, nil)
 
-		var err error
 		session, err = client.Connect(ctx, transport, nil)
 		if err != nil {
 			cancel()
@@ -230,7 +246,7 @@ func main() {
 }
 
 func init() {
-	rootCmd.PersistentFlags().String("server", "localhost:8080", "Address of the simple-mcp server.")
+	rootCmd.PersistentFlags().String("server", "localhost:8080", "Address or URL of the MCP server (e.g. localhost:8080 or http://localhost:8080/sse).")
 	viper.BindPFlag("server", rootCmd.PersistentFlags().Lookup("server"))
 
 	rootCmd.PersistentFlags().String("transport", "sse", "Transport method to use (sse, http, stdio).")

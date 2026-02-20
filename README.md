@@ -25,7 +25,9 @@ current directory.
 * `-config <path>`: Path to the YAML configuration file
   (default: `./simple-mcp.yaml`).
 * `-listen-addr <address>`: The network address and port to listen on
-  (default: `localhost:8080`).
+  (default: `localhost:8080`). The server will expose multiple standard MCP
+  endpoints: `/mcp` (multiplexed), `/sse` (dedicated SSE), and `/messages`
+  (dedicated Streamable HTTP).
 * `-tmpdir <path>`: Path to a directory for the scratch space. Enabling this
   enables file manipulation tools.
 * `-verbose`: Enable verbose logging of MCP protocol messages.
@@ -146,7 +148,8 @@ A command-line client is provided for testing and interacting with the server:
 
 ### **CLI Options**
 
-* `--server <address>`: The address of the simple-mcp server (default: `localhost:8080`).
+* `--server <address_or_url>`: The address or full URL of the MCP server
+  (default: `localhost:8080`). If a path is omitted, `/mcp` is used.
 * `--transport <type>`: Transport method to use (`sse`, `http`, or `stdio`).
 * `--command <arg>`: For `stdio` transport, the command and arguments to run.
   Can be specified multiple times.
@@ -154,6 +157,7 @@ A command-line client is provided for testing and interacting with the server:
 ### **Examples**
 
 * **SSE (default):** `simple-mcp-cli --server localhost:8080 list-tools`
+* **Custom Path:** `simple-mcp-cli --server http://localhost:8080/sse list-tools`
 * **Streamable HTTP:** `simple-mcp-cli --transport http --server localhost:8080 list-tools`
 * **Stdio:** `simple-mcp-cli --transport stdio --command ./simple-mcp --command --transport --command stdio list-tools`
 
