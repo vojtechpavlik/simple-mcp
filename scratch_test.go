@@ -72,7 +72,7 @@ func TestScratchLogic(t *testing.T) {
 		assert.Equal(t, "File created successfully.", res.Content[0].(*mcp.TextContent).Text)
 		content, err = os.ReadFile(filepath.Join(tmpDir, "command-file.txt"))
 		assert.NoError(t, err)
-		assert.Equal(t, "command content\n", string(content))
+		assert.Equal(t, "command content", string(content))
 	})
 
 	t.Run("CopyResourceToFile_Combined", func(t *testing.T) {
@@ -89,7 +89,7 @@ func TestScratchLogic(t *testing.T) {
 		assert.Equal(t, "File created successfully.", res.Content[0].(*mcp.TextContent).Text)
 		content, err := os.ReadFile(filepath.Join(tmpDir, "combined-file.txt"))
 		assert.NoError(t, err)
-		assert.Equal(t, "static content\ndynamic content\n", string(content))
+		assert.Equal(t, "static content\ndynamic content", string(content))
 	})
 
 	t.Run("CopyResourceTree", func(t *testing.T) {

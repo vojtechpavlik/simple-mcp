@@ -22,10 +22,16 @@ import (
 	"time"
 )
 
+type toolResult struct {
+	Result     string
+	Duration   time.Duration
+	ReturnCode int
+}
+
 // executeCommand renders the command template with the provided parameters
 // and executes it in a shell. It returns the combined stdout/stderr,
 // the exit code, and any Go-level error that occurred.
-func executeCommand(item ContextItem, params map[string]interface{}, workDir string) (string, int, time.Duration, error) {
+func executeCommand(item ContextItem, params map[string]interface{}, workDir string) (toolResult, error) {
 	startTime := time.Now()
 
 	// We separate code from data by passing parameters as environment variables.
@@ -48,39 +54,106 @@ func executeCommand(item ContextItem, params map[string]interface{}, workDir str
 		envVars = append(envVars, fmt.Sprintf("%s=%s", envVarName, strValue))
 		templateData[key] = "${" + envVarName + "}"
 	}
+	var templateText string
+	interpreter := "sh"
+	interpreterArgs := []string{}
 
+	// check if command is a file
+	isScriptFile := false
+	hasShebang := false
+	if strings.HasPrefix(item.Command, "/") {
+		if info, err := os.Stat(item.Command); err == nil && !info.IsDir() {
+			if content, err := os.ReadFile(item.Command); err == nil {
+				isScriptFile = true
+				templateText = string(content)
+				// Check for shebang
+				firstLine, _, _ := strings.Cut(templateText, "\n")
+				if strings.HasPrefix(firstLine, "#!") {
+					hasShebang = true
+					shebang := strings.TrimSpace(strings.TrimPrefix(firstLine, "#!"))
+					parts := strings.Fields(shebang)
+					if len(parts) > 0 {
+						candidate := parts[0]
+						if _, err := os.Stat(candidate); err == nil {
+							interpreter = candidate
+							interpreterArgs = []string{}
+							if len(parts) > 1 {
+								interpreterArgs = append(interpreterArgs, parts[1:]...)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	if !isScriptFile {
+		interpreterArgs = []string{"-c"}
+		header := "set -o pipefail\n"
+		if item.Header != "" {
+			header = item.Header
+		}
+		footer := ""
+		if item.Footer != "" {
+			footer = item.Footer
+		}
+		templateText = header + item.Command + footer
+	}
 	// Parse the command template
-	tmpl, err := template.New("command").Parse(item.Command)
+	tmpl, err := template.New("command").Parse(templateText)
 	if err != nil {
-		return "", -1, 0, fmt.Errorf("invalid command template in config: %w", err)
+		return toolResult{}, fmt.Errorf("invalid command template in config: %w", err)
 	}
 
 	// Render the command string using the variable references
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, templateData); err != nil {
-		return "", -1, 0, fmt.Errorf("failed to build command from template: %w", err)
+		return toolResult{}, fmt.Errorf("failed to build command from template: %w", err)
 	}
 	finalCommand := buf.String()
 
-	const defaultTimeout = 30
-	timeout := item.TimeoutSeconds
-	if timeout <= 0 {
-		timeout = defaultTimeout
+	if item.TimeoutSeconds <= 0 {
+		item.TimeoutSeconds = 30
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(item.TimeoutSeconds)*time.Second)
 	defer cancel()
 
 	// We use exec.Command (without Context) so we can manually manage the
 	// wait/kill cycle. This prevents 'CombinedOutput' from hanging on
 	// open pipes even after the context is done.
-	cmd := exec.Command("sh", "-c", finalCommand)
+	var cmd *exec.Cmd
+	if isScriptFile && hasShebang {
+		tmpFile, err := os.CreateTemp("", "mcp-script-*")
+		if err != nil {
+			return toolResult{}, fmt.Errorf("failed to create temp file: %w", err)
+		}
+		tempPath := tmpFile.Name()
+		defer os.Remove(tempPath)
+
+		if _, err := tmpFile.WriteString(finalCommand); err != nil {
+			tmpFile.Close()
+			return toolResult{}, fmt.Errorf("failed to write temp file: %w", err)
+		}
+		tmpFile.Close()
+
+		if err := os.Chmod(tempPath, 0755); err != nil {
+			return toolResult{}, fmt.Errorf("failed to chmod temp file: %w", err)
+		}
+		cmd = exec.Command(tempPath)
+	} else {
+		cmd = exec.Command(interpreter, append(interpreterArgs, finalCommand)...)
+	}
 
 	// Assign the process to a new Process Group so we can identify all children.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
-	// Attach the current environment + our safe parameter variables
-	cmd.Env = append(os.Environ(), envVars...)
+	// Start with our safe parameter variables
+	cmd.Env = envVars
+
+	// Now add the os env the command should get
+	for _, envVarName := range item.EnvVars {
+		cmd.Env = append(cmd.Env, os.Getenv(envVarName))
+	}
 
 	// Set the working directory for the command.
 	if workDir != "" {
@@ -96,13 +169,14 @@ func executeCommand(item ContextItem, params map[string]interface{}, workDir str
 
 	// Start the command
 	if err := cmd.Start(); err != nil {
-		return "", -1, 0, fmt.Errorf("failed to start command: %w", err)
+		return toolResult{}, fmt.Errorf("failed to start command: %w", err)
 	}
 
 	// Create a channel to signal command completion
 	done := make(chan error, 1)
 	go func() {
 		done <- cmd.Wait()
+		close(done)
 	}()
 
 	// Wait for either the command to finish or the timeout
@@ -113,7 +187,10 @@ func executeCommand(item ContextItem, params map[string]interface{}, workDir str
 		// We ignore errors here because the process might already be gone.
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 
-		return "", -1, time.Since(startTime), fmt.Errorf("command timed out after %d seconds", timeout)
+		return toolResult{
+			Duration:   time.Since(startTime),
+			ReturnCode: -1,
+		}, fmt.Errorf("command timed out after %d seconds", item.TimeoutSeconds)
 
 	case err := <-done:
 		// Command finished naturally
@@ -122,17 +199,30 @@ func executeCommand(item ContextItem, params map[string]interface{}, workDir str
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				exitCode = exitErr.ExitCode()
 			} else {
-				exitCode = -1 // Non-execution error
+				exitCode = -1
 			}
 		}
+		if exitCode != 0 {
+			ignored := false
+			for _, code := range item.IgnoreExitCodes {
+				if code == exitCode {
+					ignored = true
+					break
+				}
+			}
 
-		duration := time.Since(startTime)
-
-		if err != nil {
-			// Return the output (likely stderr) along with the error to aid debugging.
-			return outputBuf.String(), exitCode, duration, fmt.Errorf("command failed: %w", err)
+			if !ignored {
+				return toolResult{
+					Duration:   time.Since(startTime),
+					ReturnCode: exitCode,
+					Result:     outputBuf.String(),
+				}, fmt.Errorf("command failed: %w", err)
+			}
 		}
-
-		return outputBuf.String(), exitCode, duration, nil
+		return toolResult{
+			Duration:   time.Since(startTime),
+			ReturnCode: exitCode,
+			Result:     strings.TrimSpace(outputBuf.String()),
+		}, nil
 	}
 }
