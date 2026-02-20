@@ -25,12 +25,16 @@ current directory.
 * `-config <path>`: Path to the YAML configuration file
   (default: `./simple-mcp.yaml`).
 * `-listen-addr <address>`: The network address and port to listen on
-  (default: `localhost:8080`).
+  (default: `localhost:8080`). The server will expose multiple standard MCP
+  endpoints: `/mcp` (multiplexed), `/sse` (dedicated SSE), and `/messages`
+  (dedicated Streamable HTTP).
 * `-tmpdir <path>`: Path to a directory for the scratch space. Enabling this
   enables file manipulation tools.
 * `-verbose`: Enable verbose logging of MCP protocol messages.
 * `-max-async-tasks <number>`: Maximum number of asynchronous tasks to keep in
   memory (default: 20).
+* `-transport <type>`: Transport method for MCP. Options: `auto` (default), `sse`,
+  `http` (Streamable HTTP), or `stdio`.
 
 ## **Configuration**
 
@@ -41,6 +45,7 @@ following global options:
 * `tmpDir`: Same as `-tmpdir`.
 * `verbose`: Same as `-verbose`.
 * `maxAsyncTasks`: Same as `-max-async-tasks`.
+* `transport`: Same as `-transport`.
 
 The `spec` section also defines:
 
@@ -134,6 +139,7 @@ scratch space.
 
 A command-line client is provided for testing and interacting with the server:
 
+* `make inspect`: Launch the interactive MCP Inspector UI (requires Node.js/npx).
 * `simple-mcp-cli list-tools`: List all available tools.
 * `simple-mcp-cli show-tool <name>`: Show description of a tool.
 * `simple-mcp-cli list-resources`: List all available resources.
@@ -141,7 +147,20 @@ A command-line client is provided for testing and interacting with the server:
 * `simple-mcp-cli resource <uri>`: Read the content of a resource.
 * `simple-mcp-cli tool <name> [--param value]...`: Call a tool with parameters.
 
-Use the `-server` flag to specify the server address (default: `localhost:8080`).
+### **CLI Options**
+
+* `--server <address_or_url>`: The address or full URL of the MCP server
+  (default: `localhost:8080`). If a path is omitted, `/mcp` is used.
+* `--transport <type>`: Transport method to use (`sse`, `http`, or `stdio`).
+* `--command <arg>`: For `stdio` transport, the command and arguments to run.
+  Can be specified multiple times.
+
+### **Examples**
+
+* **SSE (default):** `simple-mcp-cli --server localhost:8080 list-tools`
+* **Custom Path:** `simple-mcp-cli --server http://localhost:8080/sse list-tools`
+* **Streamable HTTP:** `simple-mcp-cli --transport http --server localhost:8080 list-tools`
+* **Stdio:** `simple-mcp-cli --transport stdio --command ./simple-mcp --command --transport --command stdio list-tools`
 
 ## **Security & Remote Access**
 

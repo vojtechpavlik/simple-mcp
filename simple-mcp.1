@@ -4,7 +4,7 @@ simple-mcp \- Simple Model Context Protocol (MCP) server in Go
 .SH SYNOPSIS
 .B simple-mcp
 [\fI\-config file\fR] [\fI\-listen-addr address\fR] [\fI\-tmpdir directory\fR]
-[\fI\-verbose\fR] [\fI\-max-async-tasks number\fR]
+[\fI\-verbose\fR] [\fI\-max-async-tasks number\fR] [\fI\-transport type\fR]
 .SH DESCRIPTION
 .B simple-mcp
 is a lightweight server implementing the Model Context Protocol (MCP). It is
@@ -25,7 +25,9 @@ Default: \fI./simple-mcp.yaml\fR (or \fI/etc/simple-mcp/simple-mcp.yaml\fR when
 running as a system service).
 .TP
 .BI \-listen-addr " address"
-The network address and port to listen on for HTTP requests.
+The network address and port to listen on for HTTP requests. The server exposes
+multiple standard MCP endpoints: \fI/mcp\fR (multiplexed), \fI/sse\fR (dedicated
+SSE), and \fI/messages\fR (dedicated Streamable HTTP).
 .br
 Default: \fIlocalhost:8080\fR.
 .TP
@@ -40,6 +42,20 @@ Enable verbose logging of MCP protocol messages.
 Maximum number of asynchronous tasks to keep in memory.
 .br
 Default: \fI20\fR.
+.TP
+.BI \-transport " type"
+The transport method to use for MCP. Supported types are:
+.RS
+.IP \fBauto\fR 8
+Automatically detect and handle both \fBsse\fR and \fBhttp\fR (Streamable HTTP)
+transports on the same endpoint (default).
+.IP \fBsse\fR
+Use the Server-Sent Events (SSE) transport.
+.IP \fBhttp\fR
+Use the Streamable HTTP transport.
+.IP \fBstdio\fR
+Use the standard input/output transport.
+.RE
 
 .SH CONFIGURATION
 The behavior of the server is defined in \fBsimple-mcp.yaml\fR.
@@ -53,6 +69,8 @@ The \fBspec\fR section supports the following global options:
 \fBverbose:\fR Same as \fB\-verbose\fR.
 .IP \[bu]
 \fBmaxAsyncTasks:\fR Same as \fB\-max-async-tasks\fR.
+.IP \[bu]
+\fBtransport:\fR Same as \fB\-transport\fR.
 
 .P
 The configuration also defines:

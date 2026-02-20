@@ -4,11 +4,14 @@ GO=go
 LDFLAGS=-ldflags="-w -s"
 BUILD_ENV=CGO_ENABLED=0 GOOS=linux GOARCH=amd64
 
-.PHONY: all build clean lint-docs test
+.PHONY: all build clean lint-docs test inspect
 
 all: build
 
 build: $(SERVER_BINARY) $(CLIENT_BINARY)
+
+inspect: build
+	npx @modelcontextprotocol/inspector ./$(SERVER_BINARY) -t stdio
 
 $(SERVER_BINARY): cmd/simple-mcp/main.go
 	$(BUILD_ENV) $(GO) build $(LDFLAGS) -o $(SERVER_BINARY) ./cmd/simple-mcp

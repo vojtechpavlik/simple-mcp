@@ -3,7 +3,8 @@
 simple-mcp-cli \- Command-line client for the simple-mcp server
 .SH SYNOPSIS
 .B simple-mcp-cli
-[\fI\-server address\fR] \fIsubcommand\fR [\fIargs\fR]
+[\fI\-server address\fR] [\fI\-transport type\fR] [\fI\-command arg\fR]
+\fIsubcommand\fR [\fIargs\fR]
 .SH DESCRIPTION
 .B simple-mcp-cli
 is a testing and debugging tool for the \fBsimple-mcp\fR server. It allows users
@@ -11,8 +12,17 @@ to list and invoke tools and resources directly from the command line.
 
 .SH OPTIONS
 .TP
-.BI \-server " address"
-The address of the \fBsimple-mcp\fR server (default: \fIlocalhost:8080\fR).
+.BI \-server " address_or_url"
+The address or full URL of the \fBsimple-mcp\fR server (default:
+\fIlocalhost:8080\fR). If a path is omitted, \fI/mcp\fR is used.
+.TP
+.BI \-transport " type"
+The transport method to use. Options are \fBsse\fR (default), \fBhttp\fR
+(Streamable HTTP), and \fBstdio\fR.
+.TP
+.BI \-command " arg"
+For \fBstdio\fR transport, the command and arguments to execute. This option
+can be specified multiple times to build the command line.
 
 .SH SUBCOMMANDS
 .TP
@@ -52,6 +62,18 @@ simple-mcp-cli resource simple-mcp://system/uptime
 .P
 .RS 4
 simple-mcp-cli tool PackageVersion --package bash
+.RE
+.P
+.B Connect to a specific endpoint:
+.P
+.RS 4
+simple-mcp-cli --server http://localhost:8080/sse list-tools
+.RE
+.P
+.B Use stdio transport with simple-mcp:
+.P
+.RS 4
+simple-mcp-cli --transport stdio --command ./simple-mcp --command --transport --command stdio list-tools
 .RE
 
 .SH SEE ALSO

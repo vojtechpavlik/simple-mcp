@@ -9,7 +9,9 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -28,27 +30,63 @@ var rootCmd = &cobra.Command{
 	Use:   "simple-mcp-cli",
 	Short: "A CLI for the simple-mcp server",
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		transportType := viper.GetString("transport")
 		serverAddr := viper.GetString("server")
-		baseURL := fmt.Sprintf("http://%s/mcp", serverAddr)
 
-		transport := &mcp.SSEClientTransport{
-			Endpoint: baseURL,
+		// If the address doesn't contain a scheme, assume http://
+		if !strings.Contains(serverAddr, "://") {
+			serverAddr = "http://" + serverAddr
 		}
 
-		ctx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
+		u, err := url.Parse(serverAddr)
+		if err != nil {
+			return fmt.Errorf("invalid server address: %v", err)
+		}
+
+		// If no path is provided, default to /mcp
+		if u.Path == "" || u.Path == "/" {
+			u.Path = "/mcp"
+		}
+
+		baseURL := u.String()
+
+		var transport mcp.Transport
+		switch transportType {
+		case "sse":
+			transport = &mcp.SSEClientTransport{
+				Endpoint: baseURL,
+			}
+		case "http":
+			transport = &mcp.StreamableClientTransport{
+				Endpoint: baseURL,
+			}
+		case "stdio":
+			commandArgs := viper.GetStringSlice("command")
+			if len(commandArgs) == 0 {
+				return fmt.Errorf("command is required for stdio transport (use --command)")
+			}
+			serverCmd := exec.Command(commandArgs[0], commandArgs[1:]...)
+			serverCmd.Stderr = os.Stderr // Redirect stderr so we can see server errors
+			transport = &mcp.CommandTransport{
+				Command: serverCmd,
+			}
+		default:
+			return fmt.Errorf("invalid transport type: %s", transportType)
+		}
+
+		ctx, cancel = context.WithTimeout(context.Background(), 60*time.Second)
 
 		client := mcp.NewClient(&mcp.Implementation{
 			Name:    "simple-mcp-cli",
 			Version: "1.0.0",
 		}, nil)
 
-		var err error
 		session, err = client.Connect(ctx, transport, nil)
 		if err != nil {
 			cancel()
 			return fmt.Errorf("failed to connect to server: %v", err)
 		}
-		log.Printf("Connected to server.")
+		log.Printf("Connected to server using %s transport.", transportType)
 		return nil
 	},
 	PersistentPostRun: func(cmd *cobra.Command, args []string) {
@@ -208,8 +246,15 @@ func main() {
 }
 
 func init() {
-	rootCmd.PersistentFlags().String("server", "localhost:8080", "Address of the simple-mcp server.")
+	rootCmd.PersistentFlags().String("server", "localhost:8080", "Address or URL of the MCP server (e.g. localhost:8080 or http://localhost:8080/sse).")
 	viper.BindPFlag("server", rootCmd.PersistentFlags().Lookup("server"))
+
+	rootCmd.PersistentFlags().String("transport", "sse", "Transport method to use (sse, http, stdio).")
+	viper.BindPFlag("transport", rootCmd.PersistentFlags().Lookup("transport"))
+
+	rootCmd.PersistentFlags().StringSlice("command", []string{}, "Command to run for stdio transport.")
+	viper.BindPFlag("command", rootCmd.PersistentFlags().Lookup("command"))
+
 	viper.AutomaticEnv()
 
 	rootCmd.AddCommand(listToolsCmd)
