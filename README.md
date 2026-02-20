@@ -139,6 +139,7 @@ scratch space.
 
 A command-line client is provided for testing and interacting with the server:
 
+* `make inspect`: Launch the interactive MCP Inspector UI (requires Node.js/npx).
 * `simple-mcp-cli list-tools`: List all available tools.
 * `simple-mcp-cli show-tool <name>`: Show description of a tool.
 * `simple-mcp-cli list-resources`: List all available resources.
