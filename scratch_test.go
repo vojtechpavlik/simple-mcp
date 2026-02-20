@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,7 +25,7 @@ func TestScratchLogic(t *testing.T) {
 	t.Run("CreateDirectory", func(t *testing.T) {
 		res, err := createDirectory(tmpDir, "test-dir")
 		require.NoError(t, err)
-		assert.Equal(t, "Directory created successfully.", res.Content[0].(mcp.TextContent).Text)
+		assert.Equal(t, "Directory created successfully.", res.Content[0].(*mcp.TextContent).Text)
 		_, err = os.Stat(filepath.Join(tmpDir, "test-dir"))
 		assert.NoError(t, err)
 	})
@@ -33,7 +33,7 @@ func TestScratchLogic(t *testing.T) {
 	t.Run("CreateFile", func(t *testing.T) {
 		res, err := createFile(tmpDir, "test-file.txt", "hello world\n")
 		require.NoError(t, err)
-		assert.Equal(t, "File created successfully.", res.Content[0].(mcp.TextContent).Text)
+		assert.Equal(t, "File created successfully.", res.Content[0].(*mcp.TextContent).Text)
 		content, err := os.ReadFile(filepath.Join(tmpDir, "test-file.txt"))
 		assert.NoError(t, err)
 		assert.Equal(t, "hello world\n", string(content))
@@ -42,7 +42,7 @@ func TestScratchLogic(t *testing.T) {
 	t.Run("CreateFile_WithSubdir", func(t *testing.T) {
 		res, err := createFile(tmpDir, "subdir/test-file.txt", "hello subdir\n")
 		require.NoError(t, err)
-		assert.Equal(t, "File created successfully.", res.Content[0].(mcp.TextContent).Text)
+		assert.Equal(t, "File created successfully.", res.Content[0].(*mcp.TextContent).Text)
 		content, err := os.ReadFile(filepath.Join(tmpDir, "subdir/test-file.txt"))
 		assert.NoError(t, err)
 		assert.Equal(t, "hello subdir\n", string(content))
@@ -62,14 +62,14 @@ func TestScratchLogic(t *testing.T) {
 
 		res, err := copyResourceToFile(resourceMap, tmpDir, false, "simple-mcp://content", "resource-file.txt")
 		require.NoError(t, err)
-		assert.Equal(t, "File created successfully.", res.Content[0].(mcp.TextContent).Text)
+		assert.Equal(t, "File created successfully.", res.Content[0].(*mcp.TextContent).Text)
 		content, err := os.ReadFile(filepath.Join(tmpDir, "resource-file.txt"))
 		assert.NoError(t, err)
 		assert.Equal(t, "resource content", string(content))
 
 		res, err = copyResourceToFile(resourceMap, tmpDir, false, "simple-mcp://command", "command-file.txt")
 		require.NoError(t, err)
-		assert.Equal(t, "File created successfully.", res.Content[0].(mcp.TextContent).Text)
+		assert.Equal(t, "File created successfully.", res.Content[0].(*mcp.TextContent).Text)
 		content, err = os.ReadFile(filepath.Join(tmpDir, "command-file.txt"))
 		assert.NoError(t, err)
 		assert.Equal(t, "command content\n", string(content))
@@ -86,7 +86,7 @@ func TestScratchLogic(t *testing.T) {
 
 		res, err := copyResourceToFile(resourceMap, tmpDir, false, "simple-mcp://combined", "combined-file.txt")
 		require.NoError(t, err)
-		assert.Equal(t, "File created successfully.", res.Content[0].(mcp.TextContent).Text)
+		assert.Equal(t, "File created successfully.", res.Content[0].(*mcp.TextContent).Text)
 		content, err := os.ReadFile(filepath.Join(tmpDir, "combined-file.txt"))
 		assert.NoError(t, err)
 		assert.Equal(t, "static content\ndynamic content\n", string(content))
@@ -103,7 +103,7 @@ func TestScratchLogic(t *testing.T) {
 		t.Run("MatchWithSlash", func(t *testing.T) {
 			res, err := copyResourceTree(resourceMap, tmpDir, false, "prefix://a/", "tree-slash")
 			require.NoError(t, err)
-			assert.Contains(t, res.Content[0].(mcp.TextContent).Text, "Successfully copied 2 resources")
+			assert.Contains(t, res.Content[0].(*mcp.TextContent).Text, "Successfully copied 2 resources")
 
 			content1, _ := os.ReadFile(filepath.Join(tmpDir, "tree-slash/file1.txt"))
 			assert.Equal(t, "content1", string(content1))
@@ -126,7 +126,7 @@ func TestScratchLogic(t *testing.T) {
 			}
 			res, err := copyResourceTree(resourceMapClean, tmpDir, false, "prefix://a", "tree-no-slash")
 			require.NoError(t, err)
-			assert.Contains(t, res.Content[0].(mcp.TextContent).Text, "Successfully copied 2 resources")
+			assert.Contains(t, res.Content[0].(*mcp.TextContent).Text, "Successfully copied 2 resources")
 
 			content1, _ := os.ReadFile(filepath.Join(tmpDir, "tree-no-slash/file1.txt"))
 			assert.Equal(t, "content1", string(content1))
@@ -138,7 +138,7 @@ func TestScratchLogic(t *testing.T) {
 			res, err := copyResourceTree(resourceMap, tmpDir, false, "prefix://nonexistent", "tree-none")
 			require.NoError(t, err)
 			assert.True(t, res.IsError)
-			assert.Contains(t, res.Content[0].(mcp.TextContent).Text, "no resources found")
+			assert.Contains(t, res.Content[0].(*mcp.TextContent).Text, "no resources found")
 		})
 
 		t.Run("PartialMatchSecurity", func(t *testing.T) {
@@ -172,7 +172,7 @@ func TestScratchLogic(t *testing.T) {
 		require.NoError(t, err)
 		res, err := readFile(tmpDir, "test-file-for-read.txt")
 		require.NoError(t, err)
-		assert.Equal(t, "hello read\n", res.Content[0].(mcp.TextContent).Text)
+		assert.Equal(t, "hello read\n", res.Content[0].(*mcp.TextContent).Text)
 	})
 
 	t.Run("ReplaceInFile", func(t *testing.T) {
@@ -182,7 +182,7 @@ func TestScratchLogic(t *testing.T) {
 		t.Run("ReplaceFirst", func(t *testing.T) {
 			res, err := replaceInFile(tmpDir, "test-file-for-replace.txt", "hello", "hi", false)
 			require.NoError(t, err)
-			assert.Equal(t, "File modified successfully.", res.Content[0].(mcp.TextContent).Text)
+			assert.Equal(t, "File modified successfully.", res.Content[0].(*mcp.TextContent).Text)
 			content, _ := os.ReadFile(filepath.Join(tmpDir, "test-file-for-replace.txt"))
 			assert.Equal(t, "hi world\nhello gopher\n", string(content))
 		})
@@ -192,7 +192,7 @@ func TestScratchLogic(t *testing.T) {
 			require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "test-file-for-replace.txt"), []byte("hello world\nhello gopher\n"), 0644))
 			res, err := replaceInFile(tmpDir, "test-file-for-replace.txt", "hello", "hi", true)
 			require.NoError(t, err)
-			assert.Equal(t, "File modified successfully.", res.Content[0].(mcp.TextContent).Text)
+			assert.Equal(t, "File modified successfully.", res.Content[0].(*mcp.TextContent).Text)
 			content, _ := os.ReadFile(filepath.Join(tmpDir, "test-file-for-replace.txt"))
 			assert.Equal(t, "hi world\nhi gopher\n", string(content))
 		})
@@ -217,14 +217,14 @@ func TestScratchLogic(t *testing.T) {
 			res, err := replaceInFile(tmpDir, "test-file-for-replace.txt", "nonexistent", "replacement", false)
 			require.NoError(t, err)
 			assert.True(t, res.IsError)
-			assert.Contains(t, res.Content[0].(mcp.TextContent).Text, "pattern not found")
+			assert.Contains(t, res.Content[0].(*mcp.TextContent).Text, "pattern not found")
 		})
 
 		t.Run("InvalidRegex", func(t *testing.T) {
 			res, err := replaceInFile(tmpDir, "test-file-for-replace.txt", "[unclosed", "replacement", false)
 			require.NoError(t, err)
 			assert.True(t, res.IsError)
-			assert.Contains(t, res.Content[0].(mcp.TextContent).Text, "invalid regular expression")
+			assert.Contains(t, res.Content[0].(*mcp.TextContent).Text, "invalid regular expression")
 		})
 	})
 
@@ -240,7 +240,7 @@ func TestScratchLogic(t *testing.T) {
 		require.NoError(t, err)
 
 		expectedContent := "file1.txt\nsubdir/\n"
-		assert.Equal(t, expectedContent, res.Content[0].(mcp.TextContent).Text)
+		assert.Equal(t, expectedContent, res.Content[0].(*mcp.TextContent).Text)
 	})
 
 	t.Run("DeleteFile", func(t *testing.T) {
@@ -248,7 +248,7 @@ func TestScratchLogic(t *testing.T) {
 		require.NoError(t, err)
 		res, err := deleteFile(tmpDir, "test-file-for-delete.txt")
 		require.NoError(t, err)
-		assert.Equal(t, "File deleted successfully.", res.Content[0].(mcp.TextContent).Text)
+		assert.Equal(t, "File deleted successfully.", res.Content[0].(*mcp.TextContent).Text)
 		_, err = os.Stat(filepath.Join(tmpDir, "test-file-for-delete.txt"))
 		assert.Error(t, err)
 	})
@@ -258,7 +258,7 @@ func TestScratchLogic(t *testing.T) {
 		require.NoError(t, err)
 		res, err := removeDirectory(tmpDir, "dir-for-remove")
 		require.NoError(t, err)
-		assert.Equal(t, "Directory removed successfully.", res.Content[0].(mcp.TextContent).Text)
+		assert.Equal(t, "Directory removed successfully.", res.Content[0].(*mcp.TextContent).Text)
 		_, err = os.Stat(filepath.Join(tmpDir, "dir-for-remove"))
 		assert.Error(t, err)
 	})

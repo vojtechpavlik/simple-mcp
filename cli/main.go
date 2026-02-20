@@ -14,8 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mark3labs/mcp-go/client"
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func main() {
@@ -29,31 +28,32 @@ func main() {
 	}
 
 	baseURL := fmt.Sprintf("http://%s/mcp", *serverAddr)
-	clt, err := client.NewStreamableHttpClient(baseURL)
-	if err != nil {
-		log.Fatalf("Failed to create WebSocket client: %v", err)
+	
+	transport := &mcp.SSEClientTransport{
+		Endpoint: baseURL,
 	}
-	defer clt.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	err = clt.Start(ctx)
-	if err != nil {
-		log.Fatalf("Failed to start client: %v", err)
-	}
+	client := mcp.NewClient(&mcp.Implementation{
+		Name:    "simple-mcp-cli",
+		Version: "1.0.0",
+	}, nil)
 
-	initResult, err := clt.Initialize(ctx, mcp.InitializeRequest{})
+	session, err := client.Connect(ctx, transport, nil)
 	if err != nil {
-		log.Fatalf("Failed to connect and initialize: %v", err)
+		log.Fatalf("Failed to connect to server: %v", err)
 	}
-	log.Printf("Connected to server: %s", initResult.ServerInfo.Name)
+	defer session.Close()
+
+	log.Printf("Connected to server.")
 
 	subcommand := flag.Arg(0)
 
 	switch subcommand {
 	case "list-tools":
-		tools, err := clt.ListTools(ctx, mcp.ListToolsRequest{})
+		tools, err := session.ListTools(ctx, nil)
 		if err != nil {
 			log.Fatalf("Failed to list tools: %v", err)
 		}
@@ -66,7 +66,7 @@ func main() {
 			os.Exit(1)
 		}
 		toolName := flag.Arg(1)
-		tools, err := clt.ListTools(ctx, mcp.ListToolsRequest{})
+		tools, err := session.ListTools(ctx, nil)
 		if err != nil {
 			log.Fatalf("Failed to list tools: %v", err)
 		}
@@ -79,7 +79,7 @@ func main() {
 		fmt.Printf("Tool not found: %s\n", toolName)
 		os.Exit(1)
 	case "list-resources":
-		resources, err := clt.ListResources(ctx, mcp.ListResourcesRequest{})
+		resources, err := session.ListResources(ctx, nil)
 		if err != nil {
 			log.Fatalf("Failed to list resources: %v", err)
 		}
@@ -92,7 +92,7 @@ func main() {
 			os.Exit(1)
 		}
 		resourceURI := flag.Arg(1)
-		resources, err := clt.ListResources(ctx, mcp.ListResourcesRequest{})
+		resources, err := session.ListResources(ctx, nil)
 		if err != nil {
 			log.Fatalf("Failed to list resources: %v", err)
 		}
@@ -110,20 +110,17 @@ func main() {
 			os.Exit(1)
 		}
 		resourceURI := flag.Arg(1)
-		readResult, err := clt.ReadResource(ctx, mcp.ReadResourceRequest{
-			Params: mcp.ReadResourceParams{
-				URI: resourceURI,
-			},
+		readResult, err := session.ReadResource(ctx, &mcp.ReadResourceParams{
+			URI: resourceURI,
 		})
 		if err != nil {
 			log.Fatalf("Failed to read resource: %v", err)
 		}
 		for _, content := range readResult.Contents {
-			switch c := content.(type) {
-			case mcp.TextResourceContents:
-				fmt.Print(c.Text)
-			case mcp.BlobResourceContents:
-				fmt.Print(c.Blob)
+			if content.Text != "" {
+				fmt.Print(content.Text)
+			} else if content.Blob != nil {
+				fmt.Print(string(content.Blob))
 			}
 		}
 	case "tool":
@@ -146,25 +143,23 @@ func main() {
 			}
 		}
 
-		callResult, err := clt.CallTool(ctx, mcp.CallToolRequest{
-			Params: mcp.CallToolParams{
-				Name:      toolName,
-				Arguments: params,
-			},
+		callResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+			Name:      toolName,
+			Arguments: params,
 		})
 		if err != nil {
 			log.Fatalf("Failed to call tool: %v", err)
 		}
 		if callResult.IsError {
 			for _, content := range callResult.Content {
-				if textContent, ok := content.(mcp.TextContent); ok {
-					log.Fatalf("Tool returned an error: %s", textContent.Text)
+				if textContent, ok := content.(*mcp.TextContent); ok {
+					log.Printf("Tool returned an error: %s", textContent.Text)
 				}
 			}
 			log.Fatalf("Tool returned an unknown error")
 		} else {
 			for _, content := range callResult.Content {
-				if textContent, ok := content.(mcp.TextContent); ok {
+				if textContent, ok := content.(*mcp.TextContent); ok {
 					fmt.Print(textContent.Text)
 				}
 			}

@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -130,7 +130,7 @@ func TestScratchSymlinkSecurity(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.False(t, res.IsError, "Should be able to read internal symlink")
-		assert.Equal(t, "internal content", res.Content[0].(mcp.TextContent).Text)
+		assert.Equal(t, "internal content", res.Content[0].(*mcp.TextContent).Text)
 	})
 
 	t.Run("DoubleDotFilenameAllowed", func(t *testing.T) {
@@ -140,6 +140,6 @@ func TestScratchSymlinkSecurity(t *testing.T) {
 
 		res, err = readFile(realTmpDir, "..hidden.txt")
 		require.NoError(t, err)
-		assert.Equal(t, "hidden content", res.Content[0].(mcp.TextContent).Text)
+		assert.Equal(t, "hidden content", res.Content[0].(*mcp.TextContent).Text)
 	})
 }
