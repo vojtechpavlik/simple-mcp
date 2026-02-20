@@ -57,7 +57,7 @@ func ExecuteCommand(item config.ContextItem, params map[string]interface{}, work
 		templateData[key] = "${" + envVarName + "}"
 	}
 	var templateText string
-	interpreter := "sh"
+	interpreter := "bash"
 	interpreterArgs := []string{}
 
 	// check if command is a file
