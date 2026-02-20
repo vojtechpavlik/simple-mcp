@@ -31,6 +31,8 @@ current directory.
 * `-verbose`: Enable verbose logging of MCP protocol messages.
 * `-max-async-tasks <number>`: Maximum number of asynchronous tasks to keep in
   memory (default: 20).
+* `-transport <type>`: Transport method for MCP. Options: `auto` (default), `sse`,
+  `http` (Streamable HTTP), or `stdio`.
 
 ## **Configuration**
 
@@ -41,6 +43,7 @@ following global options:
 * `tmpDir`: Same as `-tmpdir`.
 * `verbose`: Same as `-verbose`.
 * `maxAsyncTasks`: Same as `-max-async-tasks`.
+* `transport`: Same as `-transport`.
 
 The `spec` section also defines:
 
@@ -141,7 +144,18 @@ A command-line client is provided for testing and interacting with the server:
 * `simple-mcp-cli resource <uri>`: Read the content of a resource.
 * `simple-mcp-cli tool <name> [--param value]...`: Call a tool with parameters.
 
-Use the `-server` flag to specify the server address (default: `localhost:8080`).
+### **CLI Options**
+
+* `--server <address>`: The address of the simple-mcp server (default: `localhost:8080`).
+* `--transport <type>`: Transport method to use (`sse`, `http`, or `stdio`).
+* `--command <arg>`: For `stdio` transport, the command and arguments to run.
+  Can be specified multiple times.
+
+### **Examples**
+
+* **SSE (default):** `simple-mcp-cli --server localhost:8080 list-tools`
+* **Streamable HTTP:** `simple-mcp-cli --transport http --server localhost:8080 list-tools`
+* **Stdio:** `simple-mcp-cli --transport stdio --command ./simple-mcp --command --transport --command stdio list-tools`
 
 ## **Security & Remote Access**
 
