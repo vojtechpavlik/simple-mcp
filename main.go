@@ -12,7 +12,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -25,6 +24,8 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 func countLines(s string) int {
@@ -34,123 +35,154 @@ func countLines(s string) int {
 	return strings.Count(s, "\n") + 1
 }
 
-func resolveOptions(cfg *Config, cliListenAddr string, cliTmpDir string, cliVerbose bool, cliMaxAsyncTasks int, setFlags map[string]bool) (string, string, bool, int) {
-	// Precedence: Command-line flag > YAML config > Default.
-	finalListenAddr := cliListenAddr
-	if !setFlags["listen-addr"] && cfg.Specification.ListenAddr != "" {
-		finalListenAddr = cfg.Specification.ListenAddr
-	}
-
-	finalTmpDir := cliTmpDir
-	if !setFlags["tmpdir"] && cfg.Specification.TmpDir != "" {
-		finalTmpDir = cfg.Specification.TmpDir
-	}
-
-	finalVerbose := cliVerbose
-	if !setFlags["verbose"] && cfg.Specification.Verbose != nil {
-		finalVerbose = *cfg.Specification.Verbose
-	}
-
-	finalMaxAsyncTasks := cliMaxAsyncTasks
-	if !setFlags["max-async-tasks"] && cfg.Specification.MaxAsyncTasks != 0 {
-		finalMaxAsyncTasks = cfg.Specification.MaxAsyncTasks
-	}
-
-	return finalListenAddr, finalTmpDir, finalVerbose, finalMaxAsyncTasks
-}
-
 func ptr[T any](v T) *T {
 	return &v
 }
 
-func main() {
-	configFile := flag.String("config", "./simple-mcp.yaml", "Path to the YAML configuration file.")
-	listenAddr := flag.String("listen-addr", "localhost:8080", "Address to listen on for HTTP requests.")
-	tmpDir := flag.String("tmpdir", "", "Path to a directory for scratch space.")
-	verbose := flag.Bool("verbose", false, "Enable verbose logging of MCP protocol messages.")
-	maxAsyncTasks := flag.Int("max-async-tasks", 20, "Maximum number of asynchronous tasks to keep in memory.")
-	flag.Parse()
+var (
+	cfgFile string
+)
 
-	cfg, err := LoadConfig(*configFile)
-	if err != nil {
-		log.Fatalf("ERROR: Error loading configuration: %v", err)
-	}
-	log.Printf("Configuration loaded successfully from %s", *configFile)
-
-	// Determine which flags were explicitly set by the user on the command line.
-	setFlags := make(map[string]bool)
-	flag.Visit(func(f *flag.Flag) {
-		setFlags[f.Name] = true
-	})
-
-	finalListenAddr, finalTmpDir, finalVerbose, finalMaxAsyncTasks := resolveOptions(cfg, *listenAddr, *tmpDir, *verbose, *maxAsyncTasks, setFlags)
-
-	if finalTmpDir != "" {
-		// Verify the directory exists and is writable first.
-		if err := checkTmpDir(finalTmpDir); err != nil {
-			log.Fatalf("ERROR: Invalid scratch space directory: %v", err)
-		}
-
-		// Resolve it to its absolute, real physical path.
-		absTmpDir, err := filepath.Abs(finalTmpDir)
+var rootCmd = &cobra.Command{
+	Use:   "simple-mcp",
+	Short: "A simple MCP server",
+	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := LoadConfig(cfgFile)
 		if err != nil {
-			log.Fatalf("ERROR: Could not get absolute path for scratch space: %v", err)
+			log.Fatalf("ERROR: Error loading configuration: %v", err)
 		}
-		realTmpDir, err := filepath.EvalSymlinks(absTmpDir)
-		if err != nil {
-			log.Fatalf("ERROR: Could not resolve symlinks for scratch space: %v", err)
+		log.Printf("Configuration loaded successfully from %s", cfgFile)
+
+		// Apply configuration overrides if flags are not explicitly set
+		if !cmd.Flags().Changed("listen-addr") && cfg.Specification.ListenAddr != "" {
+			viper.Set("listen-addr", cfg.Specification.ListenAddr)
 		}
-		finalTmpDir = realTmpDir
 
-		log.Printf("Scratch space enabled at: %s", finalTmpDir)
-	}
+		if !cmd.Flags().Changed("tmpdir") && cfg.Specification.TmpDir != "" {
+			viper.Set("tmpdir", cfg.Specification.TmpDir)
+		}
 
-	taskStore := NewTaskStore(finalMaxAsyncTasks)
-	log.Printf("Task store initialized with limit: %d", finalMaxAsyncTasks)
+		if !cmd.Flags().Changed("verbose") && cfg.Specification.Verbose != nil {
+			viper.Set("verbose", *cfg.Specification.Verbose)
+		}
 
-	// Pre-cache resource definitions for efficient lookup by the GetResource tool.
-	resourceMap := make(map[string]ResourceItem)
-	for _, item := range cfg.Specification.Resources {
-		resourceMap[item.URI] = item
-	}
-	log.Printf("Cached %d resource definitions.", len(resourceMap))
+		if !cmd.Flags().Changed("max-async-tasks") && cfg.Specification.MaxAsyncTasks != 0 {
+			viper.Set("max-async-tasks", cfg.Specification.MaxAsyncTasks)
+		}
 
-	// Define the SSE handler
-	sseHandler := mcp.NewSSEHandler(func(req *http.Request) *mcp.Server {
-		s := mcp.NewServer(&mcp.Implementation{
-			Name:    cfg.Metadata.Name,
-			Version: cfg.APIVersion,
-		}, &mcp.ServerOptions{
-			Capabilities: &mcp.ServerCapabilities{
-				Resources: &mcp.ResourceCapabilities{
-					Subscribe:   true,
-					ListChanged: true,
-				},
-				Tools: &mcp.ToolCapabilities{
-					ListChanged: true,
-				},
-			},
-		})
+		if !cmd.Flags().Changed("transport") && cfg.Specification.Transport != "" {
+			viper.Set("transport", cfg.Specification.Transport)
+		}
 
-		registerBuiltinTools(s, taskStore, resourceMap, finalTmpDir, finalVerbose)
-		registerConfigTools(s, cfg, taskStore, finalTmpDir, finalVerbose)
-		registerResources(s, cfg, finalTmpDir, finalVerbose)
+		finalListenAddr := viper.GetString("listen-addr")
+		finalTmpDir := viper.GetString("tmpdir")
+		finalVerbose := viper.GetBool("verbose")
+		finalMaxAsyncTasks := viper.GetInt("max-async-tasks")
+		finalTransport := viper.GetString("transport")
+
+		// Validate the transport option
+		if finalTransport != "sse" && finalTransport != "http" && finalTransport != "stdio" {
+			log.Fatalf("ERROR: Invalid transport option '%s'. Must be one of 'sse', 'http', or 'stdio'.", finalTransport)
+		}
 
 		if finalTmpDir != "" {
-			registerScratchTools(s, resourceMap, finalTmpDir, finalVerbose)
+			// Verify the directory exists and is writable first.
+			if err := checkTmpDir(finalTmpDir); err != nil {
+				log.Fatalf("ERROR: Invalid scratch space directory: %v", err)
+			}
+
+			// Resolve it to its absolute, real physical path.
+			absTmpDir, err := filepath.Abs(finalTmpDir)
+			if err != nil {
+				log.Fatalf("ERROR: Could not get absolute path for scratch space: %v", err)
+			}
+			realTmpDir, err := filepath.EvalSymlinks(absTmpDir)
+			if err != nil {
+				log.Fatalf("ERROR: Could not resolve symlinks for scratch space: %v", err)
+			}
+			finalTmpDir = realTmpDir
+
+			log.Printf("Scratch space enabled at: %s", finalTmpDir)
 		}
 
-		return s
-	}, nil)
+		taskStore := NewTaskStore(finalMaxAsyncTasks)
+		log.Printf("Task store initialized with limit: %d", finalMaxAsyncTasks)
 
-	log.Printf("MCP server starting, listening on %s/mcp ...", finalListenAddr)
-	http.Handle("/mcp", sseHandler)
-	// Also handle /mcp/ for flexibility
-	http.Handle("/mcp/", sseHandler)
+		// Pre-cache resource definitions for efficient lookup by the GetResource tool.
+		resourceMap := make(map[string]ResourceItem)
+		for _, item := range cfg.Specification.Resources {
+			resourceMap[item.URI] = item
+		}
+		log.Printf("Cached %d resource definitions.", len(resourceMap))
 
-	if err := http.ListenAndServe(finalListenAddr, nil); err != nil {
-		log.Fatalf("ERROR: Could not start HTTP server: %v", err)
+		// Define the SSE handler
+		sseHandler := mcp.NewSSEHandler(func(req *http.Request) *mcp.Server {
+			s := mcp.NewServer(&mcp.Implementation{
+				Name:    cfg.Metadata.Name,
+				Version: cfg.APIVersion,
+			}, &mcp.ServerOptions{
+				Capabilities: &mcp.ServerCapabilities{
+					Resources: &mcp.ResourceCapabilities{
+						Subscribe:   true,
+						ListChanged: true,
+					},
+					Tools: &mcp.ToolCapabilities{
+						ListChanged: true,
+					},
+				},
+			})
+
+			registerBuiltinTools(s, taskStore, resourceMap, finalTmpDir, finalVerbose)
+			registerConfigTools(s, cfg, taskStore, finalTmpDir, finalVerbose)
+			registerResources(s, cfg, finalTmpDir, finalVerbose)
+
+			if finalTmpDir != "" {
+				registerScratchTools(s, resourceMap, finalTmpDir, finalVerbose)
+			}
+
+			return s
+		}, nil)
+
+		log.Printf("MCP server starting, listening on %s/mcp ...", finalListenAddr)
+		http.Handle("/mcp", sseHandler)
+		// Also handle /mcp/ for flexibility
+		http.Handle("/mcp/", sseHandler)
+
+		if err := http.ListenAndServe(finalListenAddr, nil); err != nil {
+			log.Fatalf("ERROR: Could not start HTTP server: %v", err)
+		}
+	},
+}
+
+func main() {
+	if err := rootCmd.Execute(); err != nil {
+		os.Exit(1)
 	}
+}
+
+func init() {
+	cobra.OnInitialize()
+
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "./simple-mcp.yaml", "Path to the YAML configuration file.")
+
+	rootCmd.Flags().String("listen-addr", "localhost:8080", "Address to listen on for HTTP requests.")
+	viper.BindPFlag("listen-addr", rootCmd.Flags().Lookup("listen-addr"))
+
+	rootCmd.Flags().String("tmpdir", "", "Path to a directory for scratch space.")
+	viper.BindPFlag("tmpdir", rootCmd.Flags().Lookup("tmpdir"))
+
+	rootCmd.Flags().Bool("verbose", false, "Enable verbose logging of MCP protocol messages.")
+	viper.BindPFlag("verbose", rootCmd.Flags().Lookup("verbose"))
+
+	rootCmd.Flags().Int("max-async-tasks", 20, "Maximum number of asynchronous tasks to keep in memory.")
+	viper.BindPFlag("max-async-tasks", rootCmd.Flags().Lookup("max-async-tasks"))
+
+	rootCmd.Flags().StringP("transport", "t", "sse", "Transport method for MCP (sse, http, stdio).")
+	viper.BindPFlag("transport", rootCmd.Flags().Lookup("transport"))
+
+	viper.AutomaticEnv()
+	viper.SetEnvPrefix("SIMPLE_MCP")
+	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
 }
 
 func checkTmpDir(path string) error {

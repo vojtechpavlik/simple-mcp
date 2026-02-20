@@ -92,6 +92,7 @@ type Spec struct {
 	TmpDir        string         `yaml:"tmpDir,omitempty"`
 	Verbose       *bool          `yaml:"verbose,omitempty"`
 	MaxAsyncTasks int            `yaml:"maxAsyncTasks,omitempty"`
+	Transport     string         `yaml:"transport,omitempty"`
 }
 
 // Config represents the top-level structure of the simple-mcp.yaml file.
@@ -219,4 +220,31 @@ func LoadConfig(path string) (*Config, error) {
 	config.Specification.Resources = expandedResources
 
 	return &config, nil
+}
+
+// resolveOptions determines the final configuration values by combining
+// CLI flags and the configuration file, with CLI flags taking precedence.
+func resolveOptions(cfg *Config, cliListenAddr, cliTmpDir string, cliVerbose bool, cliMaxAsyncTasks int, setFlags map[string]bool) (string, string, bool, int) {
+	finalListenAddr := cliListenAddr
+	finalTmpDir := cliTmpDir
+	finalVerbose := cliVerbose
+	finalMaxAsyncTasks := cliMaxAsyncTasks
+
+	if !setFlags["listen-addr"] && cfg.Specification.ListenAddr != "" {
+		finalListenAddr = cfg.Specification.ListenAddr
+	}
+
+	if !setFlags["tmpdir"] && cfg.Specification.TmpDir != "" {
+		finalTmpDir = cfg.Specification.TmpDir
+	}
+
+	if !setFlags["verbose"] && cfg.Specification.Verbose != nil {
+		finalVerbose = *cfg.Specification.Verbose
+	}
+
+	if !setFlags["max-async-tasks"] && cfg.Specification.MaxAsyncTasks != 0 {
+		finalMaxAsyncTasks = cfg.Specification.MaxAsyncTasks
+	}
+
+	return finalListenAddr, finalTmpDir, finalVerbose, finalMaxAsyncTasks
 }

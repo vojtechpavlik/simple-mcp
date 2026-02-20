@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -32,8 +33,12 @@ func TestListTools(t *testing.T) {
 		t.Fatalf("Failed to build server and client: %v", err)
 	}
 	t.Logf("built client and server: %s", buildCmd.String())
+	port := os.Getenv("SIMPLE_MCP_PORT")
+	if port == "" {
+		port = "8080"
+	}
 	// Start the server from the project root
-	serverCmd := exec.Command("./simple-mcp")
+	serverCmd := exec.Command("./simple-mcp", "--listen-addr", "localhost:"+port)
 	serverCmd.Dir = rootDir
 	var serverOut bytes.Buffer
 	serverCmd.Stdout = &serverOut
@@ -49,7 +54,7 @@ func TestListTools(t *testing.T) {
 	time.Sleep(3 * time.Second)
 
 	// Run the client from the project root and capture the output
-	clientCmd := exec.Command("./simple-mcp-cli", "list-tools")
+	clientCmd := exec.Command("./simple-mcp-cli", "--server", "localhost:"+port, "list-tools")
 	clientCmd.Dir = rootDir
 	var clientOut bytes.Buffer
 	clientCmd.Stdout = &clientOut
