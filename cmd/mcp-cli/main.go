@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -28,14 +29,35 @@ var rootCmd = &cobra.Command{
 	Use:   "simple-mcp-cli",
 	Short: "A CLI for the simple-mcp server",
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		transportType := viper.GetString("transport")
 		serverAddr := viper.GetString("server")
 		baseURL := fmt.Sprintf("http://%s/mcp", serverAddr)
 
-		transport := &mcp.SSEClientTransport{
-			Endpoint: baseURL,
+		var transport mcp.Transport
+		switch transportType {
+		case "sse":
+			transport = &mcp.SSEClientTransport{
+				Endpoint: baseURL,
+			}
+		case "http":
+			transport = &mcp.StreamableClientTransport{
+				Endpoint: baseURL,
+			}
+		case "stdio":
+			commandArgs := viper.GetStringSlice("command")
+			if len(commandArgs) == 0 {
+				return fmt.Errorf("command is required for stdio transport (use --command)")
+			}
+			serverCmd := exec.Command(commandArgs[0], commandArgs[1:]...)
+			serverCmd.Stderr = os.Stderr // Redirect stderr so we can see server errors
+			transport = &mcp.CommandTransport{
+				Command: serverCmd,
+			}
+		default:
+			return fmt.Errorf("invalid transport type: %s", transportType)
 		}
 
-		ctx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel = context.WithTimeout(context.Background(), 60*time.Second)
 
 		client := mcp.NewClient(&mcp.Implementation{
 			Name:    "simple-mcp-cli",
@@ -48,7 +70,7 @@ var rootCmd = &cobra.Command{
 			cancel()
 			return fmt.Errorf("failed to connect to server: %v", err)
 		}
-		log.Printf("Connected to server.")
+		log.Printf("Connected to server using %s transport.", transportType)
 		return nil
 	},
 	PersistentPostRun: func(cmd *cobra.Command, args []string) {
@@ -210,6 +232,13 @@ func main() {
 func init() {
 	rootCmd.PersistentFlags().String("server", "localhost:8080", "Address of the simple-mcp server.")
 	viper.BindPFlag("server", rootCmd.PersistentFlags().Lookup("server"))
+
+	rootCmd.PersistentFlags().String("transport", "sse", "Transport method to use (sse, http, stdio).")
+	viper.BindPFlag("transport", rootCmd.PersistentFlags().Lookup("transport"))
+
+	rootCmd.PersistentFlags().StringSlice("command", []string{}, "Command to run for stdio transport.")
+	viper.BindPFlag("command", rootCmd.PersistentFlags().Lookup("command"))
+
 	viper.AutomaticEnv()
 
 	rootCmd.AddCommand(listToolsCmd)

@@ -88,8 +88,8 @@ var rootCmd = &cobra.Command{
 		finalTransport := viper.GetString("transport")
 
 		// Validate the transport option
-		if finalTransport != "sse" && finalTransport != "http" && finalTransport != "stdio" {
-			log.Fatalf("ERROR: Invalid transport option '%s'. Must be one of 'sse', 'http', or 'stdio'.", finalTransport)
+		if finalTransport != "auto" && finalTransport != "sse" && finalTransport != "http" && finalTransport != "stdio" {
+			log.Fatalf("ERROR: Invalid transport option '%s'. Must be one of 'auto', 'sse', 'http', or 'stdio'.", finalTransport)
 		}
 
 		if finalTmpDir != "" {
@@ -121,7 +121,8 @@ var rootCmd = &cobra.Command{
 			resourceMap[item.URI] = item
 		}
 		log.Printf("Cached %d resource definitions.", len(resourceMap))
-		if finalTransport == "stdio" {
+
+		serverFactory := func(req *http.Request) *mcp.Server {
 			s := mcp.NewServer(&mcp.Implementation{
 				Name:    cfg.Metadata.Name,
 				Version: cfg.APIVersion,
@@ -139,66 +140,45 @@ var rootCmd = &cobra.Command{
 			registerBuiltinTools(s, taskStore, resourceMap, finalTmpDir, finalVerbose)
 			registerConfigTools(s, cfg, taskStore, finalTmpDir, finalVerbose)
 			registerResources(s, cfg, finalTmpDir, finalVerbose)
-							if finalTmpDir != "" {
-								scratch.RegisterScratchTools(s, resourceMap, finalTmpDir, finalVerbose)
-										}
-										log.Printf("MCP server starting on stdio...")
+			if finalTmpDir != "" {
+				scratch.RegisterScratchTools(s, resourceMap, finalTmpDir, finalVerbose)
+			}
+			return s
+		}
+
+		if finalTransport == "stdio" {
+			s := serverFactory(nil)
+			log.Printf("MCP server starting on stdio...")
 			if err := s.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 				log.Fatalf("ERROR: Server error: %v", err)
 			}
-		} else if finalTransport == "sse" || finalTransport == "http" {
+		} else if finalTransport == "auto" || finalTransport == "sse" || finalTransport == "http" {
 			var httpHandler http.Handler
-			// Define the SSE handler
+
 			if finalTransport == "sse" {
-				httpHandler = mcp.NewSSEHandler(func(req *http.Request) *mcp.Server {
-					s := mcp.NewServer(&mcp.Implementation{
-						Name:    cfg.Metadata.Name,
-						Version: cfg.APIVersion,
-					}, &mcp.ServerOptions{
-						Capabilities: &mcp.ServerCapabilities{
-							Resources: &mcp.ResourceCapabilities{
-								Subscribe:   true,
-								ListChanged: true,
-							},
-							Tools: &mcp.ToolCapabilities{
-								ListChanged: true,
-							},
-						},
-					})
-					registerBuiltinTools(s, taskStore, resourceMap, finalTmpDir, finalVerbose)
-					registerConfigTools(s, cfg, taskStore, finalTmpDir, finalVerbose)
-					registerResources(s, cfg, finalTmpDir, finalVerbose)
-									if finalTmpDir != "" {
-										scratch.RegisterScratchTools(s, resourceMap, finalTmpDir, finalVerbose)
-									}
-return s
-				}, nil)
+				httpHandler = mcp.NewSSEHandler(serverFactory, nil)
 			} else if finalTransport == "http" {
-				httpHandler = mcp.NewStreamableHTTPHandler(func(req *http.Request) *mcp.Server {
-					s := mcp.NewServer(&mcp.Implementation{
-						Name:    cfg.Metadata.Name,
-						Version: cfg.APIVersion,
-					}, &mcp.ServerOptions{
-						Capabilities: &mcp.ServerCapabilities{
-							Resources: &mcp.ResourceCapabilities{
-								Subscribe:   true,
-								ListChanged: true,
-							},
-							Tools: &mcp.ToolCapabilities{
-								ListChanged: true,
-							},
-						},
-					})
-					registerBuiltinTools(s, taskStore, resourceMap, finalTmpDir, finalVerbose)
-					registerConfigTools(s, cfg, taskStore, finalTmpDir, finalVerbose)
-					registerResources(s, cfg, finalTmpDir, finalVerbose)
-									if finalTmpDir != "" {
-										scratch.RegisterScratchTools(s, resourceMap, finalTmpDir, finalVerbose)
-									}
-return s
-				}, nil)
+				httpHandler = mcp.NewStreamableHTTPHandler(serverFactory, nil)
+			} else { // auto
+				sseHandler := mcp.NewSSEHandler(serverFactory, nil)
+				streamableHandler := mcp.NewStreamableHTTPHandler(serverFactory, nil)
+				httpHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					// SSE transport starts with a GET request expecting text/event-stream
+					if r.Method == http.MethodGet && strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
+						sseHandler.ServeHTTP(w, r)
+						return
+					}
+					// SSE messages are sent via POST and typically have a sessionid query parameter in mcp-go
+					if r.Method == http.MethodPost && (r.URL.Query().Get("sessionid") != "" || r.URL.Query().Get("session_id") != "") {
+						sseHandler.ServeHTTP(w, r)
+						return
+					}
+					// Default to streamable HTTP for other requests
+					streamableHandler.ServeHTTP(w, r)
+				})
 			}
-			log.Printf("MCP server starting, listening on %s/mcp ...", finalListenAddr)
+
+			log.Printf("MCP server starting (%s), listening on %s/mcp ...", finalTransport, finalListenAddr)
 			http.Handle("/mcp", httpHandler)
 			// Also handle /mcp/ for flexibility
 			http.Handle("/mcp/", httpHandler)
@@ -235,7 +215,7 @@ func init() {
 	rootCmd.Flags().Int("max-async-tasks", 20, "Maximum number of asynchronous tasks to keep in memory.")
 	viper.BindPFlag("max-async-tasks", rootCmd.Flags().Lookup("max-async-tasks"))
 
-	rootCmd.Flags().StringP("transport", "t", "sse", "Transport method for MCP (sse, http, stdio).")
+	rootCmd.Flags().StringP("transport", "t", "auto", "Transport method for MCP (auto, sse, http, stdio).")
 	viper.BindPFlag("transport", rootCmd.Flags().Lookup("transport"))
 
 	viper.AutomaticEnv()

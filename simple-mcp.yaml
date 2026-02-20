@@ -8,6 +8,7 @@ spec:
   tmpDir: ""
   verbose: false
   maxAsyncTasks: 20
+  # transport: "auto" # Options: auto, sse, http, stdio
 
   resources:
     - uri: "simple-mcp://system/overview"
