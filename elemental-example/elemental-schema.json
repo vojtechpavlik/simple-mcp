@@ -1,0 +1,315 @@
+{
+  "name": "Elemental 3 Configuration Directory",
+  "description": "Standard directory structure for SUSE Elemental 3 image build configurations. Use this definition to generate valid configuration files.",
+  "structure": {
+    "root": {
+      "description": "The root of the configuration directory (often passed to 'elemental build --config-dir').",
+      "files": {
+        "install.yaml": {
+          "required": true,
+          "description": "Configures the OS installation (bootloader, disk size, partitions).",
+          "schema": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+              "bootloader": {
+                "type": "string",
+                "description": "Specifies the bootloader to use.",
+                "default": "grub",
+                "enum": ["grub", "none"]
+              },
+              "kernelCmdLine": {
+                "type": "string",
+                "description": "Additional parameters to add to the kernel command line."
+              },
+              "cryptoPolicy": {
+                "type": "string",
+                "default": "default",
+                "enum": ["default", "fips"]
+              },
+              "raw": {
+                "type": "object",
+                "properties": {
+                  "diskSize": {
+                    "type": "string",
+                    "description": "Specifies the size of the resulting disk image (e.g., '10G').",
+                    "pattern": "^[1-9]\\d*[KMGT]$"
+                  }
+                },
+                "required": ["diskSize"]
+              },
+              "iso": {
+                "type": "object",
+                "properties": {
+                  "device": {
+                    "type": "string",
+                    "description": "Specifies the disk that will be used as the install device."
+                  }
+                },
+                "required": ["device"]
+              }
+            },
+            "required": ["bootloader"],
+            "oneOf": [
+              { "required": ["raw"] },
+              { "required": ["iso"] }
+            ]
+          }
+        },
+        "suse-product-manifest.yaml": {
+          "required": false,
+          "description": "Example Product Release Manifest. This filename is arbitrary; referenced by release.yaml.",
+          "schema": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+              "metadata": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "version": { "type": "string" },
+                  "creationDate": { "type": "string" },
+                  "upgradePathsFrom": { "type": "array", "items": { "type": "string" } }
+                },
+                "required": ["name", "version"]
+              },
+              "corePlatform": {
+                "type": "object",
+                "description": "Used in Product Manifests to extend a Core Platform.",
+                "properties": {
+                  "image": { "type": "string" },
+                  "version": { "type": "string" }
+                },
+                "required": ["image"]
+              },
+              "components": {
+                "type": "object",
+                "properties": {
+                  "operatingSystem": {
+                    "description": "Used in Core Manifests to define the OS image.",
+                    "type": "object",
+                    "properties": {
+                      "version": { "type": "string" },
+                      "image": { "type": "string" }
+                    },
+                    "required": ["image"]
+                  },
+                  "systemd": {
+                    "type": "object",
+                    "properties": {
+                      "extensions": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "name": { "type": "string" },
+                            "image": { "type": "string" },
+                            "required": { "type": "boolean" },
+                            "kernelModules": { "type": "array", "items": { "type": "string" } }
+                          },
+                          "required": ["name", "image"]
+                        }
+                      }
+                    }
+                  },
+                  "helm": {
+                    "type": "object",
+                    "properties": {
+                      "charts": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "name": { "type": "string" },
+                            "chart": { "type": "string" },
+                            "version": { "type": "string" },
+                            "namespace": { "type": "string" },
+                            "repository": { "type": "string" },
+                            "values": { "type": "object" },
+                            "dependsOn": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "name": { "type": "string" },
+                                  "type": { "type": "string", "enum": ["helm", "sysext"] }
+                                },
+                                "required": ["name", "type"]
+                              }
+                            }
+                          },
+                          "required": ["chart"]
+                        }
+                      },
+                      "repositories": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "name": { "type": "string" },
+                            "url": { "type": "string" }
+                          },
+                          "required": ["name", "url"]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "required": ["metadata"],
+            "oneOf": [
+              {
+                "title": "Core Manifest",
+                "required": ["components"],
+                "properties": {
+                  "components": { "required": ["operatingSystem"] }
+                }
+              },
+              {
+                "title": "Product Manifest",
+                "required": ["corePlatform"]
+              }
+            ]
+          }
+        },
+        "release.yaml": {
+          "required": true,
+          "description": "Defines the product release reference and enabled components.",
+          "schema": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "manifestURI": {
+                "type": "string",
+                "description": "URI to the release manifest (oci:// or file://)."
+              },
+              "components": {
+                "type": "object",
+                "properties": {
+                  "systemd": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": { "extension": { "type": "string" } },
+                      "required": ["extension"]
+                    }
+                  },
+                  "helm": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "chart": { "type": "string" },
+                        "valuesFile": { "type": "string" }
+                      },
+                      "required": ["chart"]
+                    }
+                  }
+                }
+              }
+            },
+            "required": ["manifestURI"]
+          }
+        },
+        "kubernetes.yaml": {
+          "required": false,
+          "description": "Configures the Kubernetes cluster, including Helm charts and manifests.",
+          "schema": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+              "manifests": {
+                "type": "array",
+                "items": { "type": "string", "format": "uri" }
+              },
+              "helm": {
+                "type": "object",
+                "properties": {
+                  "charts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": { "type": "string" },
+                        "repositoryName": { "type": "string" },
+                        "version": { "type": "string" },
+                        "targetNamespace": { "type": "string" },
+                        "valuesFile": { "type": "string" }
+                      },
+                      "required": ["name", "repositoryName", "version", "targetNamespace"]
+                    }
+                  },
+                  "repositories": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": { "type": "string" },
+                        "url": { "type": "string" }
+                      },
+                      "required": ["name", "url"]
+                    }
+                  }
+                }
+              },
+              "nodes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "hostname": { "type": "string" },
+                    "type": { "type": "string", "enum": ["server", "agent"] },
+                    "init": { "type": "boolean" }
+                  }
+                }
+              },
+              "network": {
+                "type": "object",
+                "properties": {
+                  "apiHost": { "type": "string" },
+                  "apiVIP": { "type": "string" },
+                  "apiVIP6": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "butane.yaml": {
+          "required": false,
+          "description": "Ignition configuration using the Butane format (Variant: fcos, Version: 1.6.0).",
+          "schemaReference": "https://raw.githubusercontent.com/coreos/butane/main/docs/config-fcos-v1_6.json",
+          "documentationURI": "https://coreos.github.io/butane/config-fcos-v1.6/"
+        }
+      },
+      "directories": {
+        "network": {
+          "description": "Contains nmstate YAML configuration files for network interfaces.",
+          "filePattern": "*.yaml",
+          "schemaHint": "Use standard nmstate syntax (interfaces, routes, dns-resolver).",
+          "documentationURI": "https://nmstate.io/devel/api.html"
+        },
+        "kubernetes": {
+          "description": "Container for Kubernetes resources.",
+          "directories": {
+            "manifests": {
+              "description": "Standard Kubernetes YAML manifests (Deployments, Services, etc.).",
+              "filePattern": "*.yaml",
+              "documentationURI": "https://kubernetes.io/docs/concepts/overview/working-with-objects/kubernetes-objects/"
+            },
+            "helm": {
+              "description": "Container for Helm configuration.",
+              "directories": {
+                "values": {
+                  "description": "Helm values files referenced by release.yaml or kubernetes.yaml.",
+                  "filePattern": "*.yaml"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

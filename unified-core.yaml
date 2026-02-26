@@ -53,7 +53,7 @@ spec:
 
     - uri: "elemental://schema"
       description: "JSON Schema definition for the Elemental 3 configuration directory."
-      contentFile: "elemental-schema.json"
+      contentFile: "elemental-example/elemental-schema.json"
 
     - uri: "elemental://config/linux-only/"
       description: "Working example of a linux-only (no RKE2, no Kubernetes) Unified Core configuration."
