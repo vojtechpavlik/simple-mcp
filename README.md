@@ -159,8 +159,11 @@ A command-line client is provided for testing and interacting with the server:
 
 * **SSE (default):** `simple-mcp-cli --server localhost:8080 list-tools`
 * **Custom Path:** `simple-mcp-cli --server http://localhost:8080/sse list-tools`
-* **Streamable HTTP:** `simple-mcp-cli --transport http --server localhost:8080 list-tools`
-* **Stdio:** `simple-mcp-cli --transport stdio --command ./simple-mcp --command --transport --command stdio list-tools`
+* **Streamable HTTP:**
+  `simple-mcp-cli --transport http --server localhost:8080 list-tools`
+* **Stdio:**
+  `simple-mcp-cli --transport stdio --command ./simple-mcp`
+  `--command --transport --command stdio list-tools`
 
 ## **Security & Remote Access**
 

@@ -73,7 +73,10 @@ simple-mcp-cli --server http://localhost:8080/sse list-tools
 .B Use stdio transport with simple-mcp:
 .P
 .RS 4
-simple-mcp-cli --transport stdio --command ./simple-mcp --command --transport --command stdio list-tools
+simple-mcp-cli --transport stdio \e
+--command ./simple-mcp \e
+--command --transport \e
+--command stdio list-tools
 .RE
 
 .SH SEE ALSO
