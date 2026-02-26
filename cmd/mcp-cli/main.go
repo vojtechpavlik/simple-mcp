@@ -26,68 +26,78 @@ var (
 	cancel  context.CancelFunc
 )
 
+// connectToServer reads transport config from Viper and establishes an MCP session.
+func connectToServer() error {
+	transportType := viper.GetString("transport")
+	serverAddr := viper.GetString("server")
+
+	// If the address doesn't contain a scheme, assume http://
+	if !strings.Contains(serverAddr, "://") {
+		serverAddr = "http://" + serverAddr
+	}
+
+	u, err := url.Parse(serverAddr)
+	if err != nil {
+		return fmt.Errorf("invalid server address: %v", err)
+	}
+
+	// If no path is provided, default to /mcp
+	if u.Path == "" || u.Path == "/" {
+		u.Path = "/mcp"
+	}
+
+	baseURL := u.String()
+
+	var transport mcp.Transport
+	switch transportType {
+	case "sse":
+		transport = &mcp.SSEClientTransport{
+			Endpoint: baseURL,
+		}
+	case "http":
+		transport = &mcp.StreamableClientTransport{
+			Endpoint: baseURL,
+		}
+	case "stdio":
+		commandArgs := viper.GetStringSlice("command")
+		if len(commandArgs) == 0 {
+			return fmt.Errorf("command is required for stdio transport (use --command)")
+		}
+		serverCmd := exec.Command(commandArgs[0], commandArgs[1:]...)
+		serverCmd.Stderr = os.Stderr // Redirect stderr so we can see server errors
+		transport = &mcp.CommandTransport{
+			Command: serverCmd,
+		}
+	default:
+		return fmt.Errorf("invalid transport type: %s", transportType)
+	}
+
+	ctx, cancel = context.WithTimeout(context.Background(), 60*time.Second)
+
+	client := mcp.NewClient(&mcp.Implementation{
+		Name:    "simple-mcp-cli",
+		Version: "1.0.0",
+	}, nil)
+
+	session, err = client.Connect(ctx, transport, nil)
+	if err != nil {
+		cancel()
+		return fmt.Errorf("failed to connect to server: %v", err)
+	}
+	log.Printf("Connected to server using %s transport.", transportType)
+	return nil
+}
+
 var rootCmd = &cobra.Command{
 	Use:   "simple-mcp-cli",
 	Short: "A CLI for the simple-mcp server",
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		transportType := viper.GetString("transport")
-		serverAddr := viper.GetString("server")
-
-		// If the address doesn't contain a scheme, assume http://
-		if !strings.Contains(serverAddr, "://") {
-			serverAddr = "http://" + serverAddr
+		// Commands with DisableFlagParsing handle their own connection setup
+		// because Cobra can't parse persistent flags for them.
+		if cmd.DisableFlagParsing {
+			return nil
 		}
-
-		u, err := url.Parse(serverAddr)
-		if err != nil {
-			return fmt.Errorf("invalid server address: %v", err)
-		}
-
-		// If no path is provided, default to /mcp
-		if u.Path == "" || u.Path == "/" {
-			u.Path = "/mcp"
-		}
-
-		baseURL := u.String()
-
-		var transport mcp.Transport
-		switch transportType {
-		case "sse":
-			transport = &mcp.SSEClientTransport{
-				Endpoint: baseURL,
-			}
-		case "http":
-			transport = &mcp.StreamableClientTransport{
-				Endpoint: baseURL,
-			}
-		case "stdio":
-			commandArgs := viper.GetStringSlice("command")
-			if len(commandArgs) == 0 {
-				return fmt.Errorf("command is required for stdio transport (use --command)")
-			}
-			serverCmd := exec.Command(commandArgs[0], commandArgs[1:]...)
-			serverCmd.Stderr = os.Stderr // Redirect stderr so we can see server errors
-			transport = &mcp.CommandTransport{
-				Command: serverCmd,
-			}
-		default:
-			return fmt.Errorf("invalid transport type: %s", transportType)
-		}
-
-		ctx, cancel = context.WithTimeout(context.Background(), 60*time.Second)
-
-		client := mcp.NewClient(&mcp.Implementation{
-			Name:    "simple-mcp-cli",
-			Version: "1.0.0",
-		}, nil)
-
-		session, err = client.Connect(ctx, transport, nil)
-		if err != nil {
-			cancel()
-			return fmt.Errorf("failed to connect to server: %v", err)
-		}
-		log.Printf("Connected to server using %s transport.", transportType)
-		return nil
+		return connectToServer()
 	},
 	PersistentPostRun: func(cmd *cobra.Command, args []string) {
 		if session != nil {
@@ -195,13 +205,63 @@ var toolCmd = &cobra.Command{
 	Use:                "tool <tool-name> [--param-name param-value]...",
 	Short:              "Call a tool",
 	DisableFlagParsing: true,
-	Run: func(cmd *cobra.Command, args []string) {
-		if len(args) < 1 {
-			cmd.Help()
-			os.Exit(1)
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// DisableFlagParsing prevents Cobra from parsing persistent flags,
+		// so we manually extract them from the raw args before connecting.
+		var remaining []string
+		var commandValues []string
+		for i := 0; i < len(args); i++ {
+			arg := args[i]
+			if arg == "-h" || arg == "--help" {
+				return cmd.Help()
+			}
+			if !strings.HasPrefix(arg, "--") {
+				remaining = append(remaining, arg)
+				continue
+			}
+			flagName := strings.TrimPrefix(arg, "--")
+			switch flagName {
+			case "transport":
+				if i+1 >= len(args) {
+					return fmt.Errorf("missing value for --%s", flagName)
+				}
+				viper.Set("transport", args[i+1])
+				i++
+			case "server":
+				if i+1 >= len(args) {
+					return fmt.Errorf("missing value for --%s", flagName)
+				}
+				viper.Set("server", args[i+1])
+				i++
+			case "command":
+				if i+1 >= len(args) {
+					return fmt.Errorf("missing value for --%s", flagName)
+				}
+				commandValues = append(commandValues, strings.Split(args[i+1], ",")...)
+				i++
+			default:
+				// Tool parameter: collect --param-name and its value
+				remaining = append(remaining, arg)
+				if i+1 < len(args) && !strings.HasPrefix(args[i+1], "--") {
+					remaining = append(remaining, args[i+1])
+					i++
+				}
+			}
 		}
-		toolName := args[0]
-		toolArgs := args[1:]
+		if len(commandValues) > 0 {
+			viper.Set("command", commandValues)
+		}
+
+		if err := connectToServer(); err != nil {
+			return err
+		}
+
+		if len(remaining) < 1 {
+			cmd.Help()
+			return fmt.Errorf("tool name is required")
+		}
+		toolName := remaining[0]
+		toolArgs := remaining[1:]
 		params := make(map[string]any)
 		for i := 0; i < len(toolArgs); i++ {
 			if strings.HasPrefix(toolArgs[i], "--") {
@@ -210,7 +270,7 @@ var toolCmd = &cobra.Command{
 					params[paramName] = toolArgs[i+1]
 					i++
 				} else {
-					log.Fatalf("Missing value for parameter: %s", paramName)
+					return fmt.Errorf("missing value for parameter: %s", paramName)
 				}
 			}
 		}
@@ -220,7 +280,7 @@ var toolCmd = &cobra.Command{
 			Arguments: params,
 		})
 		if err != nil {
-			log.Fatalf("Failed to call tool: %v", err)
+			return fmt.Errorf("failed to call tool: %v", err)
 		}
 		if callResult.IsError {
 			for _, content := range callResult.Content {
@@ -228,14 +288,14 @@ var toolCmd = &cobra.Command{
 					log.Printf("Tool returned an error: %s", textContent.Text)
 				}
 			}
-			log.Fatalf("Tool returned an unknown error")
-		} else {
-			for _, content := range callResult.Content {
-				if textContent, ok := content.(*mcp.TextContent); ok {
-					fmt.Print(textContent.Text)
-				}
+			return fmt.Errorf("tool returned an error")
+		}
+		for _, content := range callResult.Content {
+			if textContent, ok := content.(*mcp.TextContent); ok {
+				fmt.Print(textContent.Text)
 			}
 		}
+		return nil
 	},
 }
 
