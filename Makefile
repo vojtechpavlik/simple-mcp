@@ -2,7 +2,7 @@ SERVER_BINARY=simple-mcp
 CLIENT_BINARY=simple-mcp-cli
 GO=go
 LDFLAGS=-ldflags="-w -s"
-BUILD_ENV=CGO_ENABLED=0 GOOS=linux GOARCH=amd64
+BUILD_ENV=CGO_ENABLED=0
 
 .PHONY: all build clean lint-docs test inspect
 
