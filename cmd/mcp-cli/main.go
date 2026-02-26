@@ -84,7 +84,6 @@ func connectToServer() error {
 		cancel()
 		return fmt.Errorf("failed to connect to server: %v", err)
 	}
-	log.Printf("Connected to server using %s transport.", transportType)
 	return nil
 }
 
